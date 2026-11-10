@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.config import settings
 from src.database.models import Ad, ChatMessage, ChatSession
+from src.services.autopost import schedule_ad_broadcast_cleanup
 from src.services.backup_service import perform_database_backup
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ async def auto_archive_stale_ads(
             update_stmt = update(Ad).where(Ad.id.in_(ad_ids)).values(is_active=False)
             await session.execute(update_stmt)
             await session.commit()
+            schedule_ad_broadcast_cleanup(bot, ad_ids)
 
     if not archived_ads:
         return 0

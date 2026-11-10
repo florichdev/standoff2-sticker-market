@@ -44,6 +44,7 @@ from src.keyboards.admin import (
     get_reports_list_keyboard,
     get_user_action_keyboard,
 )
+from src.services.autopost import schedule_ad_broadcast_cleanup
 from src.services.broadcast import broadcast_worker, detect_parse_mode
 from src.states.admin import (
     AdminUserSearchStates,
@@ -238,6 +239,8 @@ async def resolve_report_handler(
         ad = await AdRepository(session).get_by_id(report.ad_id)
         if ad and ad.seller_id == report.violator_id and ad.is_active:
             ad_deactivated = await admin_repo.deactivate_ad_as_admin(report.ad_id)
+            if ad_deactivated and callback.bot:
+                schedule_ad_broadcast_cleanup(callback.bot, [report.ad_id])
 
     await admin_repo.resolve_report(report_id, status="resolved")
 
@@ -374,6 +377,8 @@ async def delete_ad_from_report(callback: CallbackQuery, session: AsyncSession) 
     success = await admin_repo.deactivate_ad_as_admin(ad_id)
 
     if success:
+        if callback.bot:
+            schedule_ad_broadcast_cleanup(callback.bot, [ad_id])
         await callback.answer(
             f"🗑 Лот #{ad_id} успешно снят с продажи!", show_alert=True
         )
@@ -413,7 +418,7 @@ async def execute_cascade_ban(callback: CallbackQuery, session: AsyncSession) ->
         return
 
     admin_repo = AdminRepository(session)
-    is_banned, ads_count, partners = await admin_repo.ban_user_cascade(violator_id)
+    is_banned, ads_count, partners, deactivated_ads = await admin_repo.ban_user_cascade(violator_id)
 
     if not is_banned:
         await callback.answer("Пользователь не найден.", show_alert=True)
@@ -423,6 +428,8 @@ async def execute_cascade_ban(callback: CallbackQuery, session: AsyncSession) ->
         await admin_repo.resolve_report(report_id, status="resolved")
 
     if callback.bot:
+        if deactivated_ads:
+            schedule_ad_broadcast_cleanup(callback.bot, deactivated_ads)
         try:
             await callback.bot.send_message(
                 chat_id=violator_id,

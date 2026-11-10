@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.base import get_db_session
 from src.database.models import Ad
+from src.database.repositories.ad_repo import AdRepository
 from src.database.repositories.subscription_repo import SubscriptionRepository
 from src.database.repositories.user_repo import UserRepository
 from src.utils.formatters import format_ad_caption
@@ -49,60 +50,91 @@ async def _send_subscriber_pushes(
     user_ids: list[int],
 ) -> int:
     """Worker delivering notifications sequentially to matching subscribers."""
-    keyboard = get_push_notification_keyboard(ad_id)
-    sent_count = 0
-    deactivated_ids: list[int] = []
+    try:
+        keyboard = get_push_notification_keyboard(ad_id)
+        sent_count = 0
+        deactivated_ids: list[int] = []
 
-    for user_id in user_ids:
-        try:
-            await bot.send_photo(
-                chat_id=user_id,
-                photo=photo_file_id,
-                caption=caption,
-                reply_markup=keyboard,
-                parse_mode="HTML",
-            )
-            sent_count += 1
-        except TelegramRetryAfter as e:
-            logger.warning(
-                "Push alert hit FloodWait! Sleeping for %d seconds...",
-                e.retry_after,
-            )
-            await asyncio.sleep(e.retry_after + 1)
+        for idx, user_id in enumerate(user_ids):
+            # Periodically verify ad is still active
+            if idx > 0 and idx % 10 == 0:
+                try:
+                    async with get_db_session() as db_sess:
+                        ad = await AdRepository(db_sess).get_by_id(ad_id)
+                        if ad is not None and not ad.is_active:
+                            logger.info("[NOTIFICATION] Ad #%d deactivated mid-push. Aborting.", ad_id)
+                            break
+                except Exception:
+                    pass
+
             try:
-                await bot.send_photo(
+                sent_msg = await bot.send_photo(
                     chat_id=user_id,
                     photo=photo_file_id,
                     caption=caption,
                     reply_markup=keyboard,
                     parse_mode="HTML",
                 )
-                sent_count += 1
-            except TelegramAPIError as retry_err:
-                logger.error("Retry failed for push subscriber %d: %s", user_id, retry_err)
-        except TelegramForbiddenError:
-            logger.info("Subscriber %d blocked the bot; queuing deactivation.", user_id)
-            deactivated_ids.append(user_id)
-        except TelegramBadRequest as e:
-            err_text = str(e).lower()
-            if "chat not found" in err_text or "user not found" in err_text:
+                if sent_msg is not None:
+                    sent_count += 1
+                    try:
+                        async with get_db_session() as db_sess:
+                            await AdRepository(db_sess).save_broadcast_messages(
+                                ad_id, [(sent_msg.chat.id, sent_msg.message_id)]
+                            )
+                    except Exception as save_err:
+                        logger.warning("[NOTIFICATION] Failed saving push broadcast record: %s", save_err)
+            except TelegramRetryAfter as e:
+                logger.warning(
+                    "Push alert hit FloodWait! Sleeping for %d seconds...",
+                    e.retry_after,
+                )
+                await asyncio.sleep(e.retry_after + 1)
+                try:
+                    sent_msg = await bot.send_photo(
+                        chat_id=user_id,
+                        photo=photo_file_id,
+                        caption=caption,
+                        reply_markup=keyboard,
+                        parse_mode="HTML",
+                    )
+                    if sent_msg is not None:
+                        sent_count += 1
+                        try:
+                            async with get_db_session() as db_sess:
+                                await AdRepository(db_sess).save_broadcast_messages(
+                                    ad_id, [(sent_msg.chat.id, sent_msg.message_id)]
+                                )
+                        except Exception:
+                            pass
+                except TelegramAPIError as retry_err:
+                    logger.error("Retry failed for push subscriber %d: %s", user_id, retry_err)
+            except TelegramForbiddenError:
+                logger.info("Subscriber %d blocked the bot; queuing deactivation.", user_id)
                 deactivated_ids.append(user_id)
-            else:
-                logger.warning("Failed to send push to subscriber %d: %s", user_id, e)
-        except TelegramAPIError as e:
-            logger.error("Telegram API error sending push alert to %d: %s", user_id, e)
+            except TelegramBadRequest as e:
+                err_text = str(e).lower()
+                if "chat not found" in err_text or "user not found" in err_text:
+                    deactivated_ids.append(user_id)
+                else:
+                    logger.warning("Failed to send push to subscriber %d: %s", user_id, e)
+            except TelegramAPIError as e:
+                logger.error("Telegram API error sending push alert to %d: %s", user_id, e)
 
-        await asyncio.sleep(PUSH_DELAY_SECONDS)
+            await asyncio.sleep(PUSH_DELAY_SECONDS)
 
-    if deactivated_ids:
-        try:
-            async with get_db_session() as db_sess:
-                await UserRepository(db_sess).set_active_status_bulk(deactivated_ids, False)
-        except SQLAlchemyError as exc:
-            logger.warning("Failed to bulk mark deactivated subscribers: %s", exc)
+        if deactivated_ids:
+            try:
+                async with get_db_session() as db_sess:
+                    await UserRepository(db_sess).set_active_status_bulk(deactivated_ids, False)
+            except SQLAlchemyError as exc:
+                logger.warning("Failed to bulk mark deactivated subscribers: %s", exc)
 
-    logger.info("Delivered %d push alerts for ad #%d", sent_count, ad_id)
-    return sent_count
+        logger.info("Delivered %d push alerts for ad #%d", sent_count, ad_id)
+        return sent_count
+    except asyncio.CancelledError:
+        logger.info("[NOTIFICATION] Push alerts task for ad #%d was cancelled.", ad_id)
+        return 0
 
 
 async def notify_subscribers_about_new_ad(

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.models import (
     Ad,
+    AdBroadcastMessage,
     ChatMessage,
     ChatSession,
     Referral,
@@ -181,8 +182,21 @@ class UserRepository:
         # 7. Ads created by user (and any chats/reports/transactions linked to these ads)
         ad_ids_stmt = select(Ad.id).where(Ad.seller_id == user_id)
         ad_ids_res = await self.session.execute(ad_ids_stmt)
-        ad_ids = ad_ids_res.scalars().all()
+        ad_ids = [int(i) for i in ad_ids_res.scalars().all()]
         if ad_ids:
+            b_stmt = select(
+                AdBroadcastMessage.chat_id, AdBroadcastMessage.message_id
+            ).where(AdBroadcastMessage.ad_id.in_(ad_ids))
+            b_res = await self.session.execute(b_stmt)
+            broadcast_messages = [(int(r[0]), int(r[1])) for r in b_res.all()]
+            if broadcast_messages:
+                try:
+                    from src.services.autopost import schedule_ad_broadcast_cleanup
+
+                    schedule_ad_broadcast_cleanup(None, direct_messages=broadcast_messages)
+                except Exception:
+                    pass
+
             linked_chats_stmt = select(ChatSession.id).where(ChatSession.ad_id.in_(ad_ids))
             linked_chats_res = await self.session.execute(linked_chats_stmt)
             linked_chats = linked_chats_res.scalars().all()
@@ -198,6 +212,9 @@ class UserRepository:
             )
             await self.session.execute(
                 delete(StarTransaction).where(StarTransaction.ad_id.in_(ad_ids))
+            )
+            await self.session.execute(
+                delete(AdBroadcastMessage).where(AdBroadcastMessage.ad_id.in_(ad_ids))
             )
             await self.session.execute(
                 delete(Ad).where(Ad.id.in_(ad_ids))

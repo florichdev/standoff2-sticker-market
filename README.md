@@ -5,7 +5,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![SQLAlchemy 2.0](https://img.shields.io/badge/SQLAlchemy-2.0%20(async)-D71F00.svg?logo=sqlalchemy)](https://docs.sqlalchemy.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-4169E1.svg?logo=postgresql)](https://www.postgresql.org/)
-[![Tests](https://img.shields.io/badge/Tests-Pytest%20Passing-brightgreen.svg)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-65%20Passing-brightgreen.svg)](https://docs.pytest.org/)
 [![Code Style](https://img.shields.io/badge/Code%20Style-Black%20%7C%20Ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 High-performance P2P trading platform for game assets (skins, craft stickers, collections) with an anonymous buyer-seller deal chat, automated channel broadcasts, Telegram Stars monetization, and a secure **FastAPI** web administration dashboard.
@@ -39,7 +39,9 @@ standoff2-sticker-market/
 - **Resilience & Self-Healing:** Automated migration and recovery mechanisms for media file IDs across Telegram bot migrations.
 - **Monetization Engine:** Native Telegram Stars checkout flow for Turbo & Standard announcement promotions.
 - **FastAPI Web Hub:** Independent admin panel with session tokens, audit logging, ad moderation, and broadcast management.
-- **Strict Typing & Testing:** 25+ comprehensive automated tests covering referral systems, deal lifecycle states, catalog validation, and rate limits.
+- **Strict Typing & Testing:** 65 comprehensive automated tests covering referral loops, deal lifecycle states, channel cleanup, catalog validation, and rate limits.
+- **Viral Referral System:** Tiered referral engine rewarding active referrers with free 24-hour TOP listing placements, dynamic bot deep-links, and anti-fraud checks.
+- **Channel Broadcast Sync & Cleanup:** Automated synchronization of announcements with Telegram channels, including instant deletion/cleanup upon deals or moderation bans.
 
 ---
 
@@ -112,3 +114,4 @@ pytest -v tests/
 
 ## 📄 License
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+

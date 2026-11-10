@@ -55,7 +55,11 @@ from src.keyboards.seller import (
     get_sticker_counts_keyboard,
     get_weapons_keyboard,
 )
-from src.services.autopost import autopost_new_ad
+from src.services.autopost import (
+    autopost_new_ad,
+    register_ad_task,
+    schedule_ad_broadcast_cleanup,
+)
 from src.services.notification import notify_subscribers_about_new_ad
 from src.states.ad_creation import AdCreationStates
 from src.utils.formatters import format_ad_caption
@@ -456,6 +460,7 @@ async def process_price(
         return
 
     ad.seller = user
+    await session.commit()
     await state.clear()
 
     if message.bot:
@@ -474,6 +479,7 @@ async def process_price(
                 )
                 _background_tasks.add(notif_task)
                 notif_task.add_done_callback(_background_tasks.discard)
+                register_ad_task(ad.id, notif_task)
         except Exception as exc:
             logger.error("Error scheduling subscriber notifications for ad #%d: %s", ad.id, exc)
 
@@ -490,7 +496,7 @@ async def process_price(
 
     caption = format_ad_caption(ad, mode="created")
 
-    await message.answer_photo(
+    sent_preview = await message.answer_photo(
         photo=ad.photo_file_id,
         caption=caption,
         reply_markup=get_promotion_keyboard(
@@ -503,6 +509,12 @@ async def process_price(
         ),
         parse_mode="HTML",
     )
+    if sent_preview:
+        try:
+            ad_repo = AdRepository(session)
+            await ad_repo.save_broadcast_messages(ad.id, [(sent_preview.chat.id, sent_preview.message_id)])
+        except Exception as exc:
+            logger.warning("Failed saving seller preview broadcast record: %s", exc)
 
 
 
@@ -869,11 +881,23 @@ async def process_ad_delete(
     deleted = await ad_repo.delete_ad(ad_id=ad_id, seller_id=user.id)
 
     if deleted:
-        await safe_edit_message(
-            callback,
-            text="🗑 **Объявление успешно снято с продажи.**",
-            parse_mode="Markdown",
-        )
+        if callback.bot:
+            schedule_ad_broadcast_cleanup(callback.bot, [ad_id])
+        if isinstance(callback.message, Message):
+            try:
+                await callback.message.delete()
+            except Exception:
+                await safe_edit_message(
+                    callback,
+                    text=f"🗑 <b>Объявление #{ad_id} успешно снято с продажи.</b>",
+                    parse_mode="HTML",
+                )
+            else:
+                await callback.message.answer(
+                    text=f"🗑 <b>Объявление #{ad_id} успешно снято с продажи и удалено из маркета.</b>",
+                    reply_markup=get_main_menu_keyboard(),
+                    parse_mode="HTML",
+                )
         await callback.answer("Объявление удалено")
     else:
         await callback.answer(
@@ -1035,11 +1059,17 @@ async def promo_recreate_ad(
         await callback.answer("Некорректный ID объявления.", show_alert=True)
         return
     ad_repo = AdRepository(session)
-    await ad_repo.delete_ad(ad_id=ad_id, seller_id=user.id)
+    deleted = await ad_repo.delete_ad(ad_id=ad_id, seller_id=user.id)
+    if deleted and callback.bot:
+        schedule_ad_broadcast_cleanup(callback.bot, [ad_id])
     await state.clear()
     await state.set_state(AdCreationStates.waiting_for_photo)
 
     if isinstance(callback.message, Message):
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
         await callback.message.answer(
             text=(
                 f"🗑 Предыдущее объявление #{ad_id} удалено.\n\n"

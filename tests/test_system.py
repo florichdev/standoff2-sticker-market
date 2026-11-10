@@ -659,6 +659,158 @@ class TestAutopostAndRealtime:
             sent_chats = [c[1]["chat_id"] for c in mock_bot.send_message.call_args_list]
             assert sent_chats == [1001, 1002, 1003]
 
+    @pytest.mark.asyncio
+    async def test_delete_ad_broadcast_messages(self) -> None:
+        """Ad broadcast messages are deleted from chats and purged from DB upon ad cleanup."""
+        from sqlalchemy.pool import StaticPool
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from src.database.base import Base
+        from src.database.models import Ad, AdBroadcastMessage, User
+        from src.database.repositories.ad_repo import AdRepository
+        from src.services.autopost import delete_ad_broadcast_messages
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        session_factory = async_sessionmaker(
+            engine, expire_on_commit=False, class_=AsyncSession
+        )
+
+        async with session_factory() as session:
+            seller = User(id=9911, username="test_cleaner")
+            session.add(seller)
+            await session.flush()
+
+            ad = Ad(
+                id=888,
+                seller_id=9911,
+                weapon_model="AWP",
+                skin_name="Boom",
+                category="Винтовки",
+                sticker_count=1,
+                sticker_rarity="Rare",
+                price_gold=900,
+                photo_file_id="photo_clean",
+                is_active=True,
+            )
+            session.add(ad)
+            await session.flush()
+
+            ad_repo = AdRepository(session)
+            await ad_repo.save_broadcast_messages(
+                ad_id=888,
+                messages=[(12345, 101), (67890, 102), (-1001234567, 103)],
+            )
+            await session.commit()
+
+            # Verify saved
+            saved = await ad_repo.get_broadcast_messages_for_ads([888])
+            assert len(saved) == 3
+
+        mock_bot = MagicMock()
+        mock_bot.delete_message = AsyncMock(return_value=True)
+
+        with patch("src.services.autopost.async_session_maker", session_factory):
+            deleted_count = await delete_ad_broadcast_messages(bot=mock_bot, ad_ids=[888])
+            assert deleted_count == 3
+            assert mock_bot.delete_message.call_count == 3
+
+            # Verify DB records purged
+            async with session_factory() as session:
+                ad_repo = AdRepository(session)
+                remaining = await ad_repo.get_broadcast_messages_for_ads([888])
+                assert len(remaining) == 0
+
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_seller_deletes_ad_cancels_tasks_and_cleans_messages(self) -> None:
+        """When a seller deletes an ad, ongoing autopost tasks are cancelled and sent messages deleted."""
+        from sqlalchemy.pool import StaticPool
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+        from src.database.base import Base
+        from src.database.models import Ad, User
+        from src.database.repositories.ad_repo import AdRepository
+        from src.services.autopost import (
+            register_ad_task,
+            cancel_ad_tasks,
+            delete_ad_broadcast_messages,
+        )
+
+        engine = create_async_engine(
+            "sqlite+aiosqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        session_factory = async_sessionmaker(
+            engine, expire_on_commit=False, class_=AsyncSession
+        )
+
+        async with session_factory() as session:
+            seller = User(id=7777, username="fast_seller")
+            session.add(seller)
+            await session.flush()
+
+            ad = Ad(
+                id=555,
+                seller_id=7777,
+                weapon_model="M4",
+                skin_name="Necromancer",
+                category="Винтовки",
+                sticker_count=0,
+                sticker_rarity="—",
+                price_gold=300,
+                photo_file_id="photo_fast",
+                is_active=True,
+            )
+            session.add(ad)
+            await session.flush()
+
+            ad_repo = AdRepository(session)
+            # Simulate initial preview message + 1 channel message recorded
+            await ad_repo.save_broadcast_messages(
+                ad_id=555,
+                messages=[(7777, 1001), (-100199999, 2002)],
+            )
+            await session.commit()
+
+        # Simulate an ongoing slow task
+        task_executed = False
+        async def slow_background_work() -> None:
+            nonlocal task_executed
+            await asyncio.sleep(5)
+            task_executed = True
+
+        slow_task = asyncio.create_task(slow_background_work())
+        register_ad_task(555, slow_task)
+
+        mock_bot = MagicMock()
+        mock_bot.delete_message = AsyncMock(return_value=True)
+
+        with patch("src.services.autopost.async_session_maker", session_factory):
+            # Seller deletes ad
+            async with session_factory() as session:
+                ad_repo = AdRepository(session)
+                await ad_repo.delete_ad(ad_id=555, seller_id=7777)
+                await session.commit()
+
+            deleted_count = await delete_ad_broadcast_messages(bot=mock_bot, ad_ids=[555])
+            assert deleted_count == 2
+            assert mock_bot.delete_message.call_count == 2
+            assert slow_task.cancelled() is True
+            assert task_executed is False
+
+        await engine.dispose()
+
+
 
 
 

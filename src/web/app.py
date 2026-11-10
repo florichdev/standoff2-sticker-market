@@ -66,6 +66,7 @@ from src.database.models import Ad, Referral, User
 from src.database.repositories.admin_repo import AdminRepository
 from src.database.repositories.referral_repo import ReferralRepository
 from src.database.repositories.user_repo import UserRepository
+from src.services.autopost import schedule_ad_broadcast_cleanup
 from src.services.broadcast import broadcast_worker
 from src.services.logger_service import (
     count_log_sources,
@@ -799,6 +800,9 @@ async def api_resolve_report(
         await session.commit()
 
         bot = get_bot_instance()
+        if bot and ad_deactivated and report.ad_id:
+            schedule_ad_broadcast_cleanup(bot, [report.ad_id])
+
         if bot:
             async def notify_parties() -> None:
                 try:
@@ -896,7 +900,7 @@ async def api_ban_user_cascade(
 
     async with async_session_maker() as session:
         repo = AdminRepository(session)
-        success, ads_count, partner_ids = await repo.ban_user_cascade(user_id)
+        success, ads_count, partner_ids, deactivated_ads = await repo.ban_user_cascade(user_id)
         await session.commit()
 
     if not success:
@@ -904,6 +908,8 @@ async def api_ban_user_cascade(
 
     bot = get_bot_instance()
     if bot:
+        if deactivated_ads:
+            schedule_ad_broadcast_cleanup(bot, deactivated_ads)
 
         async def send_notifications() -> None:
             try:
@@ -990,7 +996,6 @@ async def api_delete_user(
 
     bot = get_bot_instance()
     if bot and partner_ids:
-
         async def send_partner_notices() -> None:
             for pid in partner_ids:
                 try:
@@ -1022,6 +1027,10 @@ async def api_deactivate_ad(
 
     if not success:
         raise HTTPException(status_code=404, detail="Объявление не найдено")
+
+    bot = get_bot_instance()
+    if bot:
+        schedule_ad_broadcast_cleanup(bot, [ad_id])
 
     return {"ok": True, "ad_id": ad_id}
 

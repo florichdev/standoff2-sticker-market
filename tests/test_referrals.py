@@ -702,3 +702,41 @@ class TestReferralEndToEndSmoke:
             assert res.status_code == 200
             assert res.json() == {"ok": True, "user_id": 9999}
             mock_user_repo.delete_permanently.assert_called_once_with(9999)
+
+    @pytest.mark.asyncio
+    async def test_user_delete_permanently_triggers_broadcast_cleanup(self) -> None:
+        """Permanently deleting a user triggers broadcast message cleanup for their ads."""
+        from src.database.models import AdBroadcastMessage
+
+        mock_cleanup = MagicMock()
+        async with create_isolated_session() as session:
+            user = User(id=8803, username="bad_actor")
+            session.add(user)
+            await session.flush()
+
+            ad = Ad(
+                id=999,
+                seller_id=8803,
+                category="Ножи",
+                weapon_model="Karambit",
+                skin_name="Gold",
+                sticker_count=0,
+                sticker_rarity="—",
+                price_gold=5000,
+                photo_file_id="photo_999",
+                is_active=True,
+            )
+            session.add(ad)
+            await session.flush()
+
+            bmsg = AdBroadcastMessage(ad_id=999, chat_id=1234, message_id=5678)
+            session.add(bmsg)
+            await session.commit()
+
+            user_repo = UserRepository(session)
+            with patch("src.services.autopost.schedule_ad_broadcast_cleanup", mock_cleanup):
+                success, partner_ids = await user_repo.delete_permanently(8803)
+                assert success is True
+                assert mock_cleanup.call_count == 1
+                kwargs = mock_cleanup.call_args[1]
+                assert kwargs["direct_messages"] == [(1234, 5678)]

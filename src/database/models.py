@@ -137,6 +137,11 @@ class Ad(Base):
     seller: Mapped["User"] = relationship(back_populates="ads")
     chats: Mapped[list["ChatSession"]] = relationship(back_populates="ad")
     reports: Mapped[list["Report"]] = relationship(back_populates="ad")
+    broadcast_messages: Mapped[list["AdBroadcastMessage"]] = relationship(
+        back_populates="ad",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class SearchSubscription(Base):
@@ -371,3 +376,26 @@ class Referral(Base):
         foreign_keys=[referred_id],
         back_populates="referral_source",
     )
+
+
+class AdBroadcastMessage(Base):
+    """Audit log of broadcast and push messages sent for an ad to allow automated cleanup upon ban or deactivation."""
+
+    __tablename__ = "ad_broadcast_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ad_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("ads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    chat_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    message_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    ad: Mapped["Ad"] = relationship(back_populates="broadcast_messages")

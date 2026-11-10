@@ -1,11 +1,11 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from src.database.models import Ad, StarTransaction, User
+from src.database.models import Ad, AdBroadcastMessage, StarTransaction, User
 
 
 class AdRepository:
@@ -243,3 +243,38 @@ class AdRepository:
             update(Ad).where(Ad.id == ad_id).values(clicks_count=Ad.clicks_count + 1)
         )
         await self.session.execute(statement)
+
+    async def save_broadcast_messages(
+        self, ad_id: int, messages: list[tuple[int, int]]
+    ) -> None:
+        """Persist (chat_id, message_id) tuples for all broadcast/push messages sent for an ad."""
+        if not messages:
+            return
+        records = [
+            AdBroadcastMessage(ad_id=ad_id, chat_id=chat_id, message_id=message_id)
+            for chat_id, message_id in messages
+        ]
+        self.session.add_all(records)
+        await self.session.commit()
+
+    async def get_broadcast_messages_for_ads(
+        self, ad_ids: list[int]
+    ) -> list[tuple[int, int]]:
+        """Fetch all (chat_id, message_id) pairs for specified ads."""
+        if not ad_ids:
+            return []
+        statement = select(
+            AdBroadcastMessage.chat_id, AdBroadcastMessage.message_id
+        ).where(AdBroadcastMessage.ad_id.in_(ad_ids))
+        result = await self.session.execute(statement)
+        return [(int(row[0]), int(row[1])) for row in result.all()]
+
+    async def delete_broadcast_message_records(self, ad_ids: list[int]) -> None:
+        """Purge tracked broadcast message records for specified ads."""
+        if not ad_ids:
+            return
+        statement = delete(AdBroadcastMessage).where(
+            AdBroadcastMessage.ad_id.in_(ad_ids)
+        )
+        await self.session.execute(statement)
+        await self.session.commit()

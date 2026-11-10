@@ -118,13 +118,13 @@ class AdminRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none() is not None
 
-    async def ban_user_cascade(self, user_id: int) -> tuple[bool, int, list[int]]:
+    async def ban_user_cascade(self, user_id: int) -> tuple[bool, int, list[int], list[int]]:
         """Atomically ban a user, deactivate their active listings, and close active chats.
 
-        Returns (is_banned, ads_deactivated_count, list_of_affected_chat_partner_ids).
+        Returns (is_banned, ads_deactivated_count, list_of_affected_chat_partner_ids, list_of_deactivated_ad_ids).
         """
         if user_id in settings.ADMIN_IDS:
-            return False, 0, []
+            return False, 0, [], []
 
         now = datetime.now(UTC)
 
@@ -136,7 +136,7 @@ class AdminRepository:
         )
         user_res = await self.session.execute(user_stmt)
         if user_res.scalar_one_or_none() is None:
-            return False, 0, []
+            return False, 0, [], []
 
         ad_stmt = (
             update(Ad)
@@ -145,7 +145,8 @@ class AdminRepository:
             .returning(Ad.id)
         )
         ad_res = await self.session.execute(ad_stmt)
-        ads_count = len(list(ad_res.scalars().all()))
+        deactivated_ad_ids = [int(i) for i in ad_res.scalars().all()]
+        ads_count = len(deactivated_ad_ids)
 
         active_chats_stmt = select(ChatSession).where(
             or_(
@@ -171,7 +172,7 @@ class AdminRepository:
             )
             await self.session.execute(close_chats_stmt)
 
-        return True, ads_count, partner_ids
+        return True, ads_count, partner_ids, deactivated_ad_ids
 
     async def unban_user(self, user_id: int) -> bool:
         """Unban a previously banned user."""
@@ -225,9 +226,13 @@ class AdminRepository:
 
     async def get_all_active_user_ids(self) -> list[int]:
         """Fetch list of all non-banned and active user IDs for mass broadcasts."""
-        statement = select(User.id).where(
-            User.is_banned.is_(False),
-            or_(User.is_active.is_(True), User.is_active.is_(None)),
+        statement = (
+            select(User.id)
+            .where(
+                User.is_banned.is_(False),
+                or_(User.is_active.is_(True), User.is_active.is_(None)),
+            )
+            .order_by(User.id.desc())
         )
         result = await self.session.execute(statement)
         return list(result.scalars().all())
