@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Жалобы{% endblock %}
+{% block page_title %}Модерация жалоб{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Жалобы</h1>
+    <p class="page-subtitle">Арбитраж инцидентов и каскадные блокировки</p>
+  </div>
+
+  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+    <a href="/admin/reports?status=pending" class="btn btn-sm {% if status_filter == 'pending' %}btn-primary{% else %}btn-secondary{% endif %}">
+      <span>На рассмотрении</span>
+    </a>
+    <a href="/admin/reports?status=resolved" class="btn btn-sm {% if status_filter == 'resolved' %}btn-primary{% else %}btn-secondary{% endif %}">
+      <span>Решенные</span>
+    </a>
+    <a href="/admin/reports?status=dismissed" class="btn btn-sm {% if status_filter == 'dismissed' %}btn-primary{% else %}btn-secondary{% endif %}">
+      <span>Отклоненные</span>
+    </a>
+    <a href="/admin/reports?status=all" class="btn btn-sm {% if status_filter == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">
+      <span>Все</span>
+    </a>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fa-solid fa-list-check"></i>
+      <span>Список инцидентов ({{ total }})</span>
+    </div>
+  </div>
+
+  {% if reports %}
+    <div class="table-responsive">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Статус</th>
+            <th>Заявитель</th>
+            <th>Нарушитель</th>
+            <th>Причина</th>
+            <th>Объект</th>
+            <th>Дата</th>
+            <th style="text-align: right;">Управление</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in reports %}
+            <tr>
+              <td><span class="badge badge-outline">#{{ r.id }}</span></td>
+              <td>
+                {% if r.status == 'pending' %}
+                  <span class="badge badge-light">Pending</span>
+                {% elif r.status == 'resolved' %}
+                  <span class="badge">Resolved</span>
+                {% else %}
+                  <span class="badge badge-outline">Dismissed</span>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ r.reporter_id }}</strong>
+                {% if r.reporter and r.reporter.username %}
+                  <div style="font-size: 11.5px; color: var(--text-muted);">@{{ r.reporter.username }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ r.violator_id }}</strong>
+                {% if r.violator and r.violator.username %}
+                  <div style="font-size: 11.5px; color: var(--text-muted);">@{{ r.violator.username }}</div>
+                {% endif %}
+                {% if r.violator and r.violator.is_banned %}
+                  <span class="badge badge-light" style="font-size: 10px; margin-top: 2px;">BANNED</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge">{{ r.reason }}</span>
+              </td>
+              <td>
+                {% if r.ad_id %}
+                  <a href="/admin/ads" class="badge badge-light" title="Перейти к лотам">
+                    Лот #{{ r.ad_id }}
+                    <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 9px; margin-left: 3px;"></i>
+                  </a>
+                {% endif %}
+                {% if r.chat_id %}
+                  <span class="badge">Чат #{{ r.chat_id }}</span>
+                {% endif %}
+                {% if not r.ad_id and not r.chat_id %}
+                  <span class="badge badge-outline">Профиль</span>
+                {% endif %}
+              </td>
+              <td>{{ r.created_at.strftime('%d.%m.%Y %H:%M') if r.created_at else '—' }}</td>
+              <td style="text-align: right;">
+                <div style="display: inline-flex; gap: 6px;">
+                  {% if r.chat_id %}
+                    <button 
+                      class="btn btn-secondary btn-sm" 
+                      title="Лог переписки"
+                      onclick="openChatModal({{ r.chat_id }}, 'Лот #{{ r.ad_id if r.ad_id else '-' }}')"
+                    >
+                      <i class="fa-solid fa-comments"></i>
+                      <span>Лог</span>
+                    </button>
+                  {% endif %}
+
+                  {% if not (r.violator and r.violator.is_banned) %}
+                    <button 
+                      class="btn btn-danger btn-sm" 
+                      title="Забанить нарушителя каскадно"
+                      onclick="banUserCascade({{ r.violator_id }}, '{{ r.violator.username if r.violator and r.violator.username else '' }}')"
+                    >
+                      <span>Бан</span>
+                    </button>
+                  {% endif %}
+
+                  {% if r.status == 'pending' %}
+                    <button 
+                      class="btn btn-secondary btn-sm" 
+                      title="Решено"
+                      onclick="resolveReport({{ r.id }})"
+                    >
+                      <i class="fa-solid fa-check"></i>
+                    </button>
+
+                    <button 
+                      class="btn btn-ghost btn-sm" 
+                      title="Отклонить"
+                      onclick="dismissReport({{ r.id }})"
+                    >
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="text-align: center; padding: 40px 16px; color: var(--text-muted);">
+      <p style="font-size: 13px;">В данной категории нет жалоб.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

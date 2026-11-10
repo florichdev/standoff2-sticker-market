@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Дашборд{% endblock %}
+{% block page_title %}Дашборд{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Аналитика</h1>
+    <p class="page-subtitle">Текущие показатели активности маркетплейса</p>
+  </div>
+  <a href="/admin/broadcast" class="btn btn-primary" id="btn-quick-broadcast">
+    <i class="fa-solid fa-paper-plane"></i>
+    <span>Рассылка</span>
+  </a>
+</div>
+
+<!-- Monochrome KPI Grid -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Всего пользователей</span>
+      <i class="fa-solid fa-users kpi-icon"></i>
+    </div>
+    <div class="kpi-value" id="kpi-users-total">{{ stats.users_total }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Заблокировано</span>
+      <i class="fa-solid fa-user-slash kpi-icon"></i>
+    </div>
+    <div class="kpi-value" id="kpi-users-banned">{{ stats.users_banned }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Активных объявлений</span>
+      <i class="fa-solid fa-boxes-stacked kpi-icon"></i>
+    </div>
+    <div class="kpi-value" id="kpi-ads-active">{{ stats.ads_active }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">ТОП / Продвижение</span>
+      <i class="fa-solid fa-arrow-trend-up kpi-icon"></i>
+    </div>
+    <div class="kpi-value" id="kpi-ads-top">{{ stats.ads_top }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Жалоб на рассмотрении</span>
+      <i class="fa-solid fa-triangle-exclamation kpi-icon"></i>
+    </div>
+    <div class="kpi-value" id="kpi-reports-pending">{{ stats.reports_pending }}</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <span class="kpi-label">Активных чатов</span>
+      <i class="fa-solid fa-comments kpi-icon"></i>
+    </div>
+    <div class="kpi-value" id="kpi-chats-active">{{ stats.chats_active }}</div>
+  </div>
+</div>
+
+<!-- Recent Pending Reports Panel -->
+<div class="panel">
+  <div class="panel-header">
+    <div class="panel-title">
+      <i class="fa-solid fa-shield-halved"></i>
+      <span>Недавние жалобы</span>
+    </div>
+    <a href="/admin/reports" class="btn btn-secondary btn-sm" id="btn-view-all-reports">
+      <span>Все жалобы ({{ stats.reports_pending }})</span>
+      <i class="fa-solid fa-arrow-right"></i>
+    </a>
+  </div>
+
+  {% if recent_reports %}
+    <div class="table-responsive">
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Заявитель</th>
+            <th>Нарушитель</th>
+            <th>Причина</th>
+            <th>Объект</th>
+            <th>Дата</th>
+            <th style="text-align: right;">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in recent_reports %}
+            <tr>
+              <td><span class="badge badge-outline">#{{ r.id }}</span></td>
+              <td>
+                <strong>{{ r.reporter_id }}</strong>
+                {% if r.reporter and r.reporter.username %}
+                  <div style="font-size: 11.5px; color: var(--text-muted);">@{{ r.reporter.username }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ r.violator_id }}</strong>
+                {% if r.violator and r.violator.username %}
+                  <div style="font-size: 11.5px; color: var(--text-muted);">@{{ r.violator.username }}</div>
+                {% endif %}
+                {% if r.violator and r.violator.is_banned %}
+                  <span class="badge badge-light" style="font-size: 10px; margin-top: 2px;">BANNED</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge">{{ r.reason }}</span>
+              </td>
+              <td>
+                {% if r.ad_id %}
+                  <span class="badge badge-light">Лот #{{ r.ad_id }}</span>
+                {% elif r.chat_id %}
+                  <span class="badge">Чат #{{ r.chat_id }}</span>
+                {% else %}
+                  <span class="badge badge-outline">Профиль</span>
+                {% endif %}
+              </td>
+              <td>{{ r.created_at.strftime('%d.%m %H:%M') if r.created_at else '—' }}</td>
+              <td style="text-align: right;">
+                <div style="display: inline-flex; gap: 6px;">
+                  {% if r.chat_id %}
+                    <button 
+                      class="btn btn-secondary btn-sm" 
+                      title="Лог переписки"
+                      onclick="openChatModal({{ r.chat_id }}, 'Лот #{{ r.ad_id if r.ad_id else '-' }}')"
+                    >
+                      <i class="fa-solid fa-comments"></i>
+                    </button>
+                  {% endif %}
+
+                  <button 
+                    class="btn btn-danger btn-sm" 
+                    title="Забанить нарушителя (Каскад)"
+                    onclick="banUserCascade({{ r.violator_id }}, '{{ r.violator.username if r.violator and r.violator.username else '' }}')"
+                  >
+                    <span>Бан</span>
+                  </button>
+
+                  <button 
+                    class="btn btn-secondary btn-sm" 
+                    title="Пометить решенной"
+                    onclick="resolveReport({{ r.id }})"
+                  >
+                    <i class="fa-solid fa-check"></i>
+                  </button>
+
+                  <button 
+                    class="btn btn-ghost btn-sm" 
+                    title="Отклонить"
+                    onclick="dismissReport({{ r.id }})"
+                  >
+                    <i class="fa-solid fa-xmark"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div style="text-align: center; padding: 40px 16px; color: var(--text-muted);">
+      <p style="font-size: 13px;">Активных жалоб нет. Очередь чиста.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  async function pollDashboardRealtime() {
+    try {
+      const res = await fetch('/admin/api/dashboard/realtime');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data || !data.stats) return;
+
+      const s = data.stats;
+      const elUsers = document.getElementById('kpi-users-total');
+      const elBanned = document.getElementById('kpi-users-banned');
+      const elAds = document.getElementById('kpi-ads-active');
+      const elTop = document.getElementById('kpi-ads-top');
+      const elReports = document.getElementById('kpi-reports-pending');
+      const elChats = document.getElementById('kpi-chats-active');
+
+      if (elUsers && s.users_total !== undefined) elUsers.innerText = s.users_total;
+      if (elBanned && s.users_banned !== undefined) elBanned.innerText = s.users_banned;
+      if (elAds && s.ads_active !== undefined) elAds.innerText = s.ads_active;
+      if (elTop && s.ads_top !== undefined) elTop.innerText = s.ads_top;
+      if (elReports && s.reports_pending !== undefined) elReports.innerText = s.reports_pending;
+      if (elChats && s.chats_active !== undefined) elChats.innerText = s.chats_active;
+    } catch (e) {
+      console.debug('Dashboard poll skipped:', e);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    setInterval(pollDashboardRealtime, 15000);
+  });
+})();
+</script>
+{% endblock %}
+

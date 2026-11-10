@@ -1,0 +1,8 @@
+{
+  "max_active_ads": 10,
+  "stars_turbo_price": 150,
+  "stars_standard_price": 50,
+  "autopost_channel_id": "",
+  "autopost_enabled": true,
+  "referrals_for_top": 3
+}

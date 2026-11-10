@@ -1,0 +1,877 @@
+{% extends "base.html" %}
+
+{% block title %}Лот #{{ ad.id }} • {{ ad.weapon_model }} | {{ ad.skin_name }}{% endblock %}
+{% block page_title %}Просмотр лота #{{ ad.id }}{% endblock %}
+
+{% block content %}
+{% set seller_active = seller_active_count|default(0) %}
+<div class="ad-detail-wrapper">
+  <!-- Page Header with Back button and Quick Navigation -->
+  <div class="ad-header-bar">
+    <div class="ad-header-left">
+      <a href="/admin/ads" class="btn btn-sm btn-secondary ad-back-btn" title="Назад ко всем объявлениям">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Назад</span>
+      </a>
+      <div class="ad-title-block">
+        <div class="ad-main-title">
+          <span>{{ ad.weapon_model }} | {{ ad.skin_name }}</span>
+          <span class="badge badge-outline">#{{ ad.id }}</span>
+        </div>
+        <p class="page-subtitle">Вид лота в Telegram и инструменты административной модерации</p>
+      </div>
+    </div>
+
+    <div class="ad-header-right">
+      <a href="/admin/ads" class="btn btn-sm btn-secondary">
+        <i class="fa-solid fa-boxes-stacked"></i>
+        <span>Все объявления</span>
+      </a>
+      <a href="/admin/ads?seller_id={{ ad.seller_id }}" class="btn btn-sm btn-secondary">
+        <i class="fa-solid fa-user-tag"></i>
+        <span>Лоты продавца</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Adaptive 2-col / 1-col Responsive Container -->
+  <div class="ad-responsive-grid">
+    <!-- LEFT: Telegram Post Mockup (Fluid & Centered on Smaller Screens) -->
+    <div class="ad-preview-col">
+      <div class="tg-mockup-card">
+        <!-- Telegram App Header Tag -->
+        <div class="tg-app-header">
+          <div class="tg-app-title">
+            <i class="fa-brands fa-telegram" style="color: #2aabee; font-size: 16px;"></i>
+            <span>Telegram Post Preview</span>
+          </div>
+          <span class="tg-channel-name">Standsticker</span>
+        </div>
+
+        <!-- Telegram Weapon Screenshot with TOP flame badge -->
+        <div class="tg-media-box">
+          <img 
+            src="/admin/ads/{{ ad.id }}/photo" 
+            alt="{{ ad.weapon_model }}" 
+            class="tg-screenshot"
+            loading="lazy"
+            onerror="this.style.display='none'; document.getElementById('photo-fallback').style.display='flex';"
+          >
+          <div id="photo-fallback" class="tg-fallback">
+            <i class="fa-solid fa-image" style="font-size: 32px; opacity: 0.5;"></i>
+            <span style="font-size: 11px; margin-top: 6px;">Скриншот в Telegram</span>
+          </div>
+
+          {% if ad.is_top %}
+            <div class="tg-top-label">
+              <i class="fa-solid fa-fire"></i>
+              <span>ТОП ПРЕДЛОЖЕНИЕ</span>
+            </div>
+          {% endif %}
+        </div>
+
+        <!-- Telegram Text Caption Body -->
+        <div class="tg-caption-box">
+          <div class="tg-item-header">
+            🔫 {{ ad.weapon_model }} | {{ ad.skin_name }}
+          </div>
+
+          <div class="tg-row">
+            <span class="tg-muted">📂 Категория:</span> <strong>{{ ad.category }}</strong>
+          </div>
+
+          <div class="tg-row">
+            <span class="tg-muted">🏷 Наклейки:</span> <strong>{{ sticker_label }}</strong>
+          </div>
+
+          <div class="tg-row">
+            <span class="tg-muted">💰 Цена:</span> <strong style="color: #f59e0b; font-size: 15px;">{{ ad.price_gold }} G</strong>
+          </div>
+
+          <div class="tg-seller-section">
+            <div style="margin-bottom: 3px;">
+              <span class="tg-muted">👤 Продавец:</span> 
+              <code>{{ ad.seller_id }}</code> 
+              {% if ad.seller and ad.seller.username %}
+                <span style="color: #2aabee;">(@{{ ad.seller.username }})</span>
+              {% endif %}
+            </div>
+            <div>
+              <span class="tg-muted">⭐️ Рейтинг:</span> 
+              <span>★ {{ '%.1f'|format(ad.seller.rating) if ad.seller else '0.0' }} ({{ ad.seller.ratings_count if ad.seller else 0 }} отзывов)</span>
+            </div>
+          </div>
+
+          <!-- Telegram Message Footer Info -->
+          <div class="tg-footer-meta">
+            <div>
+              <i class="fa-regular fa-eye"></i> {{ ad.views_count }}
+              <span style="margin: 0 4px;">•</span>
+              <i class="fa-regular fa-comment-dots"></i> {{ ad.clicks_count }}
+            </div>
+            <div>
+              {{ ad.created_at.strftime('%d.%m.%Y %H:%M') if ad.created_at else '' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Telegram Action Buttons Mockup -->
+        <div class="tg-btn-group">
+          <div class="tg-action-btn primary">
+            💬 Написать продавцу
+          </div>
+          <div class="tg-action-btn secondary">
+            👤 Профиль продавца
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Admin Inspection & Controls (Takes full remaining width) -->
+    <div class="ad-controls-col">
+      <!-- Panel 1: Ad Status & Moderation Controls -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-sliders"></i>
+            <span>Модерация объявления #{{ ad.id }}</span>
+          </div>
+        </div>
+
+        <div class="ad-metrics-row">
+          <!-- Status Metric -->
+          <div class="ad-metric-card">
+            <div class="metric-label">Статус объявления</div>
+            {% if ad.is_active %}
+              <span class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.3);">
+                <i class="fa-solid fa-circle-check" style="margin-right: 4px;"></i> Активно
+              </span>
+            {% else %}
+              <span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">
+                <i class="fa-solid fa-circle-xmark" style="margin-right: 4px;"></i> Снято с продажи
+              </span>
+            {% endif %}
+          </div>
+
+          <!-- TOP Metric -->
+          <div class="ad-metric-card">
+            <div class="metric-label">Продвижение (ТОП)</div>
+            {% if ad.is_top %}
+              <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">
+                <i class="fa-solid fa-fire" style="margin-right: 4px;"></i> В ТОПе
+              </span>
+              {% if ad.top_until %}
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  до {{ ad.top_until.strftime('%d.%m.%Y %H:%M') }}
+                </div>
+              {% endif %}
+            {% else %}
+              <span class="badge badge-outline">Обычное</span>
+            {% endif %}
+          </div>
+
+          <!-- Seller Active Limit Metric -->
+          <div class="ad-metric-card">
+            <div class="metric-label">Лимит лотов продавца</div>
+            <div style="font-size: 13px; font-weight: 600;">
+              {% if seller_active >= 3 %}
+                <span style="color: #fca5a5;">{{ seller_active }} из 3 (исчерпан)</span>
+              {% else %}
+                <span style="color: #4ade80;">{{ seller_active }} из 3</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Engagement Metric -->
+          <div class="ad-metric-card">
+            <div class="metric-label">Статистика</div>
+            <div style="font-size: 13px; font-weight: 600;">
+              {{ ad.views_count }} <span style="font-size: 11px; color: var(--text-muted); font-weight: 400;">просмотров</span>
+              <span style="color: var(--border-subtle); margin: 0 4px;">•</span>
+              {{ ad.clicks_count }} <span style="font-size: 11px; color: var(--text-muted); font-weight: 400;">кликов</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="ad-actions-wrapper">
+          {% if ad.is_active %}
+            <button class="btn btn-danger btn-sm" onclick="deactivateAdDirect({{ ad.id }})">
+              <i class="fa-solid fa-ban"></i>
+              <span>Снять лот с продажи</span>
+            </button>
+          {% else %}
+            <button 
+              class="btn btn-primary btn-sm" 
+              onclick="activateAdDirect({{ ad.id }})"
+              {% if seller_active >= 3 %}
+                title="Внимание: у продавца уже активно 3 из 3 лотов"
+              {% endif %}
+            >
+              <i class="fa-solid fa-rotate-left"></i>
+              <span>Активировать лот</span>
+            </button>
+            {% if seller_active >= 3 %}
+              <span style="font-size: 11.5px; color: #fca5a5; display: inline-flex; align-items: center; gap: 4px;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Лимит продавца исчерпан (3/3)</span>
+              </span>
+            {% endif %}
+          {% endif %}
+
+          <button class="btn btn-secondary btn-sm" onclick="toggleTopDirect({{ ad.id }})">
+            <i class="fa-solid fa-fire" style="color: #fbbf24;"></i>
+            <span>{% if ad.is_top %}Снять с ТОП{% else %}Закрепить в ТОП (3 дня){% endif %}</span>
+          </button>
+
+          <button class="btn btn-secondary btn-sm" onclick="openWarnModal({{ ad.seller_id }}, {{ ad.id }})">
+            <i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b;"></i>
+            <span>Предупредить продавца</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Panel 2: Seller Information Card -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-user-shield"></i>
+            <span>Продавец лота</span>
+          </div>
+          <a href="/admin/users?q={{ ad.seller_id }}" class="btn btn-sm btn-secondary" style="padding: 2px 8px; font-size: 11px;">
+            <span>Профиль пользователя</span>
+            <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 9px; margin-left: 4px;"></i>
+          </a>
+        </div>
+
+        <div class="seller-card-content">
+          <div class="seller-info-group">
+            <div class="seller-avatar">
+              <i class="fa-solid fa-user"></i>
+            </div>
+            <div class="seller-text-details">
+              <div class="seller-name-row">
+                {% if ad.seller and ad.seller.first_name %}
+                  <strong>{{ ad.seller.first_name }}</strong>
+                {% else %}
+                  <strong>Пользователь</strong>
+                {% endif %}
+                {% if ad.seller and ad.seller.username %}
+                  <span class="seller-username">@{{ ad.seller.username }}</span>
+                {% endif %}
+              </div>
+              <div class="seller-meta-row">
+                <span>ID: <code>{{ ad.seller_id }}</code></span>
+                <span class="meta-dot">•</span>
+                <span>Рейтинг: ★ {{ '%.1f'|format(ad.seller.rating) if ad.seller else '0.0' }} ({{ ad.seller.ratings_count if ad.seller else 0 }})</span>
+                <span class="meta-dot">•</span>
+                {% if ad.seller and ad.seller.is_banned %}
+                  <span class="badge badge-light" style="color: #f87171;">Заблокирован</span>
+                {% else %}
+                  <span class="badge badge-outline">Активен</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <div class="seller-actions-group">
+            {% if ad.seller and not ad.seller.is_banned %}
+              <button 
+                class="btn btn-danger btn-sm" 
+                onclick="banUserCascade({{ ad.seller_id }}, '{{ ad.seller.username if ad.seller and ad.seller.username else '' }}')"
+              >
+                <span>Заблокировать</span>
+              </button>
+            {% elif ad.seller and ad.seller.is_banned %}
+              <button class="btn btn-secondary btn-sm" onclick="unbanUser({{ ad.seller_id }})">
+                <span>Разбанить</span>
+              </button>
+            {% endif %}
+            <a href="/admin/ads?seller_id={{ ad.seller_id }}" class="btn btn-secondary btn-sm">
+              <span>Все лоты ({{ seller_active }})</span>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 3: Associated Reports -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>Жалобы по данному лоту ({{ reports|length }})</span>
+          </div>
+        </div>
+
+        {% if reports %}
+          <div class="table-responsive">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Статус</th>
+                  <th>Причина</th>
+                  <th>Заявитель</th>
+                  <th>Дата</th>
+                  <th style="text-align: right;">Действие</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in reports %}
+                  <tr>
+                    <td><span class="badge badge-outline">#{{ r.id }}</span></td>
+                    <td>
+                      {% if r.status == 'pending' %}
+                        <span class="badge badge-light">Pending</span>
+                      {% elif r.status == 'resolved' %}
+                        <span class="badge">Resolved</span>
+                      {% else %}
+                        <span class="badge badge-outline">Dismissed</span>
+                      {% endif %}
+                    </td>
+                    <td><span class="badge">{{ r.reason }}</span></td>
+                    <td>
+                      ID {{ r.reporter_id }}
+                      {% if r.reporter and r.reporter.username %}
+                        <span style="font-size: 11px; color: var(--text-muted);">(@{{ r.reporter.username }})</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ r.created_at.strftime('%d.%m.%Y %H:%M') if r.created_at else '—' }}</td>
+                    <td style="text-align: right;">
+                      {% if r.status == 'pending' %}
+                        <div style="display: inline-flex; gap: 4px;">
+                          <button class="btn btn-primary btn-sm" style="padding: 2px 8px; font-size: 11px;" onclick="resolveReport({{ r.id }})">
+                            <span>Принять</span>
+                          </button>
+                          <button class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;" onclick="dismissReport({{ r.id }})">
+                            <span>Отклонить</span>
+                          </button>
+                        </div>
+                      {% else %}
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Рассмотрено</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12.5px;">
+            <i class="fa-solid fa-shield-check" style="font-size: 24px; margin-bottom: 8px; opacity: 0.5;"></i>
+            <p>На это объявление не поступало жалоб от пользователей.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Dialog for Official Warning -->
+<div class="modal-overlay" id="warn-modal">
+  <div class="modal-card" style="max-width: 480px;">
+    <div class="modal-header">
+      <div class="modal-title">
+        <i class="fa-solid fa-triangle-exclamation" style="color: #f59e0b; margin-right: 6px;"></i>
+        <span>Вынести предупреждение продавцу</span>
+      </div>
+      <button class="modal-close-btn" onclick="closeWarnModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body" style="padding: 16px;">
+      <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 12px;">
+        Пользователю в Telegram будет отправлено официальное предупреждение от имени бота.
+      </p>
+      <input type="hidden" id="warn-user-id" value="">
+      <input type="hidden" id="warn-ad-id" value="">
+      
+      <label style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 600; display: block; margin-bottom: 6px;">
+        Причина предупреждения:
+      </label>
+      <textarea 
+        id="warn-reason" 
+        rows="3" 
+        style="width: 100%; background: var(--bg-surface-active); border: 1px solid var(--border-medium); border-radius: var(--radius-sm); padding: 10px; color: var(--text-primary); font-size: 13px; resize: vertical;"
+        placeholder="Укажите причину (например, несоответствие скина, накрутка цены или спам)..."
+      >Несоответствие описания лота реальному предмету в игре.</textarea>
+    </div>
+    <div class="modal-footer" style="padding: 12px 16px; display: flex; justify-content: flex-end; gap: 8px;">
+      <button class="btn btn-secondary btn-sm" onclick="closeWarnModal()">Отмена</button>
+      <button class="btn btn-primary btn-sm" onclick="sendWarningSubmit()">Отправить предупреждение</button>
+    </div>
+  </div>
+</div>
+
+<style>
+/* ==========================================================================
+   Fluid & Adaptive Layout for Ad Detail View
+   ========================================================================== */
+.ad-detail-wrapper {
+  width: 100%;
+}
+
+.ad-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+.ad-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ad-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ad-title-block {
+  min-width: 0;
+}
+
+.ad-main-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-family: var(--font-heading);
+  font-size: clamp(17px, 2vw, 22px);
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+.ad-header-right {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Main 2-column to 1-column responsive layout */
+.ad-responsive-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  width: 100%;
+}
+
+.ad-preview-col {
+  width: 100%;
+}
+
+.ad-controls-col {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* Telegram Post Mockup */
+.tg-mockup-card {
+  width: 100%;
+  max-width: 440px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #2b394a;
+  background: #17212b;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  margin: 0 auto;
+}
+
+.tg-app-header {
+  background: #242f3d;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #10161e;
+}
+
+.tg-app-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+}
+
+.tg-channel-name {
+  font-size: 11px;
+  color: #7f91a4;
+}
+
+.tg-media-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16/9;
+  max-height: 280px;
+  background: #0e1621;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tg-screenshot {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.tg-fallback {
+  display: none;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #7f91a4;
+}
+
+.tg-top-label {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(239, 68, 68, 0.95);
+  backdrop-filter: blur(4px);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.tg-caption-box {
+  padding: 16px 18px;
+  color: #e4ecf2;
+  font-size: 13.5px;
+  line-height: 1.6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  word-break: break-word;
+}
+
+.tg-item-header {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 8px;
+}
+
+.tg-row {
+  margin-bottom: 4px;
+}
+
+.tg-muted {
+  color: #7f91a4;
+}
+
+.tg-seller-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(255,255,255,0.1);
+  font-size: 12.5px;
+}
+
+.tg-footer-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  font-size: 11px;
+  color: #7f91a4;
+}
+
+.tg-btn-group {
+  padding: 0 14px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tg-action-btn {
+  border-radius: 8px;
+  padding: 9px;
+  text-align: center;
+  user-select: none;
+}
+
+.tg-action-btn.primary {
+  background: rgba(42, 171, 238, 0.15);
+  border: 1px solid rgba(42, 171, 238, 0.3);
+  color: #2aabee;
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.tg-action-btn.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e4ecf2;
+  font-size: 12px;
+}
+
+/* Metrics and Inspector Rows */
+.ad-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.ad-metric-card {
+  background: var(--bg-card-subtle);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+  letter-spacing: 0.03em;
+}
+
+.ad-actions-wrapper {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* Seller Card Styles */
+.seller-card-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.seller-info-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.seller-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-primary);
+  border: 1px solid var(--border-medium);
+  flex-shrink: 0;
+}
+
+.seller-text-details {
+  min-width: 0;
+}
+
+.seller-name-row {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seller-username {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.seller-meta-row {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.meta-dot {
+  color: var(--border-subtle);
+  margin: 0 2px;
+}
+
+.seller-actions-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Breakpoints for Screen Resolutions
+   ========================================================================== */
+
+/* Laptop & Tablet landscape (<= 1180px) */
+@media (max-width: 1180px) {
+  .ad-responsive-grid {
+    grid-template-columns: 1fr !important;
+    gap: 22px;
+  }
+  
+  .tg-mockup-card {
+    max-width: 460px;
+  }
+}
+
+/* Tablet portrait & Mobile (<= 768px) */
+@media (max-width: 768px) {
+  .ad-metrics-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Small Mobile (<= 560px) */
+@media (max-width: 560px) {
+  .ad-header-bar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ad-header-left {
+    width: 100%;
+  }
+
+  .ad-header-right {
+    width: 100%;
+  }
+
+  .ad-header-right .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .ad-metrics-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ad-actions-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ad-actions-wrapper .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .seller-card-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .seller-actions-group {
+    width: 100%;
+  }
+
+  .seller-actions-group .btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function deactivateAdDirect(adId) {
+  if (!confirm(`Снять объявление #${adId} с публикации?`)) return;
+  try {
+    await apiPost(`/admin/api/ads/${adId}/deactivate`);
+    showToast(`Объявление #${adId} снято с продажи`);
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function activateAdDirect(adId) {
+  if (!confirm(`Восстановить объявление #${adId} и сделать его активным на маркете?`)) return;
+  try {
+    const res = await apiPost(`/admin/api/ads/${adId}/activate`);
+    showToast(res.message || `Объявление #${adId} успешно активировано!`);
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function toggleTopDirect(adId) {
+  try {
+    const res = await apiPost(`/admin/api/ads/${adId}/toggle-top`);
+    if (res.is_top) {
+      showToast(`Лот #${adId} закреплен в ТОП на 3 дня! 🔥`);
+    } else {
+      showToast(`ТОП статус снят с лота #${adId}`);
+    }
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function openWarnModal(userId, adId) {
+  document.getElementById('warn-user-id').value = userId;
+  document.getElementById('warn-ad-id').value = adId || '';
+  const modal = document.getElementById('warn-modal');
+  if (modal) modal.classList.add('active');
+}
+
+function closeWarnModal() {
+  const modal = document.getElementById('warn-modal');
+  if (modal) modal.classList.remove('active');
+}
+
+async function sendWarningSubmit() {
+  const userId = document.getElementById('warn-user-id').value;
+  const adId = document.getElementById('warn-ad-id').value;
+  const reason = document.getElementById('warn-reason').value.trim();
+
+  if (!userId) return;
+
+  try {
+    await apiPost(`/admin/api/users/${userId}/warn`, {
+      reason: reason || 'Нарушение правил торговой площадки',
+      ad_id: adId ? parseInt(adId, 10) : null
+    });
+    closeWarnModal();
+    showToast(`Официальное предупреждение доставлено пользователю ID ${userId}!`);
+  } catch (e) {
+    console.error(e);
+  }
+}
+</script>
+{% endblock %}

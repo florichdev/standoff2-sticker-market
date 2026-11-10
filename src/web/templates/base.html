@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Админ-панель{% endblock %}</title>
+
+  <!-- Google Fonts: Unbounded (Headers) & Montserrat (Body/UI) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,300..900;1,300..900&family=Unbounded:wght@300..900&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Minimalist Grayscale Theme Stylesheet -->
+  <link rel="stylesheet" href="/static/css/admin.css?v=2.2">
+</head>
+<body>
+
+<div class="app-container">
+  <!-- Mobile Backdrop Overlay -->
+  <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
+
+  <!-- Left Navigation Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <nav class="sidebar-nav">
+      <span class="nav-section-title">Навигация</span>
+
+      <a href="/admin/" class="nav-link {% if active_page == 'dashboard' %}active{% endif %}" id="nav-dashboard" title="Дашборд">
+        <i class="fa-solid fa-gauge-high"></i>
+        <span class="nav-text">Дашборд</span>
+      </a>
+
+      <a href="/admin/reports" class="nav-link {% if active_page == 'reports' %}active{% endif %}" id="nav-reports" title="Жалобы">
+        <i class="fa-solid fa-shield-halved"></i>
+        <span class="nav-text">Жалобы</span>
+        {% if pending_reports_count and pending_reports_count > 0 %}
+          <span class="badge-counter">{{ pending_reports_count }}</span>
+        {% endif %}
+      </a>
+
+      <span class="nav-section-title">Маркет</span>
+
+      <a href="/admin/users" class="nav-link {% if active_page == 'users' %}active{% endif %}" id="nav-users" title="Пользователи">
+        <i class="fa-solid fa-users"></i>
+        <span class="nav-text">Пользователи</span>
+      </a>
+
+      <a href="/admin/ads" class="nav-link {% if active_page == 'ads' %}active{% endif %}" id="nav-ads" title="Объявления">
+        <i class="fa-solid fa-boxes-stacked"></i>
+        <span class="nav-text">Объявления</span>
+      </a>
+
+      <a href="/admin/catalog" class="nav-link {% if active_page == 'catalog' %}active{% endif %}" id="nav-catalog" title="Каталог скинов">
+        <i class="fa-solid fa-layer-group"></i>
+        <span class="nav-text">Каталог</span>
+      </a>
+
+      <span class="nav-section-title">Сервис</span>
+
+      <a href="/admin/broadcast" class="nav-link {% if active_page == 'broadcast' %}active{% endif %}" id="nav-broadcast" title="Рассылка">
+        <i class="fa-solid fa-bullhorn"></i>
+        <span class="nav-text">Рассылка</span>
+      </a>
+
+      <a href="/admin/logs" class="nav-link {% if active_page == 'logs' %}active{% endif %}" id="nav-logs" title="Логи системы">
+        <i class="fa-solid fa-file-waveform"></i>
+        <span class="nav-text">Логи</span>
+      </a>
+
+      <a href="/admin/settings" class="nav-link {% if active_page == 'settings' %}active{% endif %}" id="nav-settings" title="Настройки платформы">
+        <i class="fa-solid fa-sliders"></i>
+        <span class="nav-text">Настройки</span>
+      </a>
+    </nav>
+
+    <!-- Sidebar Footer: Login + UTC+3 Clock -->
+    <div class="sidebar-footer">
+      <div class="admin-details">
+        <span class="admin-login">admin</span>
+        <span class="admin-time" id="utc-clock">--:--:-- UTC+3</span>
+      </div>
+      <a href="/admin/logout" class="icon-btn" title="Выйти" id="btn-logout">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main Content Wrapper -->
+  <main class="main-wrapper">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" id="sidebar-toggle" title="Свернуть / развернуть меню" aria-label="Toggle Sidebar">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="topbar-title">{% block page_title %}Панель управления{% endblock %}</div>
+      </div>
+    </header>
+
+    <div class="page-container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+<!-- Modal Dialog for Chat History Audit -->
+<div class="modal-overlay" id="chat-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title" id="chat-modal-title">Лог чата</div>
+      <button class="modal-close-btn" onclick="closeChatModal()" id="btn-close-modal">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body" id="chat-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary btn-sm" onclick="closeChatModal()">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<!-- Dynamic Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Client JavaScript -->
+<script src="/static/js/admin.js?v=2.2"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

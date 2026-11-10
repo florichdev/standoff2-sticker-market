@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки платформы — Standsticker{% endblock %}
+{% block page_title %}Настройки платформы{% endblock %}
+
+{% block content %}
+<div class="content-grid" style="max-width: 820px; margin: 0 auto; padding-bottom: 30px;">
+  <form id="settings-form" onsubmit="saveSettings(event)">
+    <!-- Marketplace Limits Card -->
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 16px;">
+        <h3 style="font-size: 15px; font-weight: 600; font-family: var(--font-heading); color: var(--text-primary); margin: 0;">
+          <i class="fa-solid fa-boxes-stacked" style="margin-right: 8px;"></i>Лимиты маркетплейса
+        </h3>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label class="form-label" for="max_active_ads" style="display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">
+          Максимальное число активных объявлений на одного продавца
+        </label>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <input 
+            type="number" 
+            id="max_active_ads" 
+            name="max_active_ads" 
+            value="{{ settings_data.max_active_ads }}" 
+            min="1" 
+            max="100" 
+            required 
+            class="form-control" 
+            style="width: 140px; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;"
+          >
+          <span style="font-size: 13px; color: var(--text-muted);">лотов (по умолчанию: 10)</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+          Пользователи с активным числом лотов равным или выше этого значения не смогут публиковать новые, пока не снимут старые.
+        </div>
+      </div>
+    </div>
+
+    <!-- In-Bot Autoposting Card -->
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <h3 style="font-size: 15px; font-weight: 600; font-family: var(--font-heading); color: var(--text-primary); margin: 0;">
+          <i class="fa-solid fa-bullhorn" style="margin-right: 8px; color: #10b981;"></i>Автопостинг новых объявлений в боте
+        </h3>
+        <span class="badge badge-outline" style="border-color: #10b981; color: #10b981; font-size: 11px;">
+          <i class="fa-solid fa-bolt" style="margin-right: 4px;"></i>В реальном времени
+        </span>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none;">
+          <input 
+            type="checkbox" 
+            id="autopost_enabled" 
+            name="autopost_enabled" 
+            {% if settings_data.autopost_enabled %}checked{% endif %} 
+            style="width: 18px; height: 18px; margin-top: 2px; accent-color: #10b981; cursor: pointer; flex-shrink: 0;"
+          >
+          <div>
+            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-primary); display: block;">
+              Автоматически рассылать новые объявления всем пользователям бота
+            </span>
+            <span style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; display: block; line-height: 1.5;">
+              Когда продавец выставляет новый скин, бот моментально рассылает карточку с фотографией, наклейками и кнопкой «💬 Написать продавцу» всем активным пользователям прямо в боте.
+            </span>
+          </div>
+        </label>
+      </div>
+
+      <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.18); border-radius: var(--radius-sm); padding: 12px 14px; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5; flex: 1; min-width: 200px;">
+          <i class="fa-solid fa-shield-halved" style="color: #10b981; margin-right: 6px;"></i>
+          Защита от спама: автоматический кулдаун, пропуск заблокировавших бота пользователей и отсутствие дубликатов.
+        </div>
+        <button 
+          type="button" 
+          id="btn-test-autopost" 
+          onclick="testInbotAutopost()" 
+          class="btn btn-secondary btn-sm" 
+          style="padding: 7px 14px; font-size: 12px; white-space: nowrap;"
+        >
+          <i class="fa-solid fa-paper-plane" style="margin-right: 6px;"></i> Проверить отправку себе
+        </button>
+      </div>
+    </div>
+
+    <!-- Stars Monetization Pricing -->
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 16px;">
+        <h3 style="font-size: 15px; font-weight: 600; font-family: var(--font-heading); color: var(--text-primary); margin: 0;">
+          <i class="fa-solid fa-star" style="margin-right: 8px; color: #fbbf24;"></i>Тарифы продвижения (Telegram Stars)
+        </h3>
+      </div>
+
+      <div class="form-grid-2">
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="stars_turbo_price" style="display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">
+            Тариф «Турбо» (3 дня в ТОПе)
+          </label>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <input 
+              type="number" 
+              id="stars_turbo_price" 
+              name="stars_turbo_price" 
+              value="{{ settings_data.stars_turbo_price }}" 
+              min="1" 
+              max="10000" 
+              required 
+              class="form-control" 
+              style="width: 120px; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;"
+            >
+            <span style="font-size: 13px; color: #fbbf24;">⭐️ Звёзд</span>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 14px;">
+          <label class="form-label" for="stars_standard_price" style="display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">
+            Тариф «Стандарт» (24 часа в ТОПе)
+          </label>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <input 
+              type="number" 
+              id="stars_standard_price" 
+              name="stars_standard_price" 
+              value="{{ settings_data.stars_standard_price }}" 
+              min="1" 
+              max="10000" 
+              required 
+              class="form-control" 
+              style="width: 120px; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;"
+            >
+            <span style="font-size: 13px; color: #fbbf24;">⭐️ Звёзд</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Referral Program Card -->
+    <div class="card" style="margin-bottom: 20px;">
+      <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <h3 style="font-size: 15px; font-weight: 600; font-family: var(--font-heading); color: var(--text-primary); margin: 0;">
+          <i class="fa-solid fa-users" style="margin-right: 8px; color: #3b82f6;"></i>Реферальная программа
+        </h3>
+        <span class="badge badge-outline" style="border-color: #3b82f6; color: #3b82f6; font-size: 11px;">
+          <i class="fa-solid fa-gift" style="margin-right: 4px;"></i>Награда за друзей
+        </span>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label class="form-label" for="referrals_for_top" style="display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">
+          Количество друзей для получения 1 бесплатного ТОПа
+        </label>
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <input 
+            type="number" 
+            id="referrals_for_top" 
+            name="referrals_for_top" 
+            value="{{ settings_data.referrals_for_top | default(3) }}" 
+            min="1" 
+            max="50" 
+            required 
+            class="form-control" 
+            style="width: 120px; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 600;"
+          >
+          <span style="font-size: 13px; color: var(--text-muted);">человек (по умолчанию: 3, диапазон от 1 до 50)</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+          Каждый раз, когда пользователь накапливает указанное число новых приглашенных друзей, ему на баланс начисляется 1 бесплатный ТОП (24ч), который он может активировать на любой свой лот.
+        </div>
+      </div>
+    </div>
+
+    <!-- System Info (Read-Only) -->
+    <div class="card" style="margin-bottom: 24px;">
+      <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 16px;">
+        <h3 style="font-size: 15px; font-weight: 600; font-family: var(--font-heading); color: var(--text-primary); margin: 0;">
+          <i class="fa-solid fa-server" style="margin-right: 8px;"></i>Конфигурация сервера
+        </h3>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; font-size: 13px;">
+        <div style="background: #181818; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Срок жизни объявления</div>
+          <div style="font-weight: 600; color: var(--text-primary); margin-top: 4px;">7 суток (автоархив)</div>
+        </div>
+
+        <div style="background: #181818; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Таймаут диалога сделки</div>
+          <div style="font-weight: 600; color: var(--text-primary); margin-top: 4px;">48 часов (автозакрытие)</div>
+        </div>
+
+        <div style="background: #181818; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Порт веб-админки</div>
+          <div style="font-weight: 600; color: var(--text-primary); margin-top: 4px;">{{ server_info.port }}</div>
+        </div>
+
+        <div style="background: #181818; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase;">Среда окружения</div>
+          <div style="font-weight: 600; color: #10b981; margin-top: 4px;">{{ server_info.environment }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div style="display: flex; justify-content: center; padding: 6px 0;">
+      <button 
+        type="submit" 
+        id="btn-save-settings" 
+        class="btn btn-primary" 
+        style="padding: 11px 28px; font-weight: 600; font-size: 14px; width: 100%; max-width: 320px; justify-content: center;"
+      >
+        <i class="fa-solid fa-floppy-disk" style="margin-right: 8px;"></i> Сохранить настройки
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function saveSettings(event) {
+  event.preventDefault();
+  const maxAds = parseInt(document.getElementById('max_active_ads').value, 10);
+  const turboPrice = parseInt(document.getElementById('stars_turbo_price').value, 10);
+  const standardPrice = parseInt(document.getElementById('stars_standard_price').value, 10);
+  const referralsForTop = parseInt(document.getElementById('referrals_for_top').value, 10);
+  const autopostEnabled = document.getElementById('autopost_enabled').checked;
+  const btn = document.getElementById('btn-save-settings');
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+
+  try {
+    const res = await fetch('/admin/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        max_active_ads: maxAds,
+        stars_turbo_price: turboPrice,
+        stars_standard_price: standardPrice,
+        referrals_for_top: referralsForTop,
+        autopost_enabled: autopostEnabled
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Настройки успешно обновлены и сохранены!', 'success');
+    } else {
+      showToast(data.detail || 'Ошибка сохранения настроек', 'error');
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при сохранении настроек', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-floppy-disk" style="margin-right: 8px;"></i> Сохранить настройки';
+  }
+}
+
+async function testInbotAutopost() {
+  const btn = document.getElementById('btn-test-autopost');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Отправка...';
+
+  try {
+    const res = await fetch('/admin/api/settings/autopost/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(data.message || 'Тестовое сообщение отправлено вам в бот!', 'success');
+    } else {
+      showToast(data.detail || 'Ошибка отправки в бот', 'error');
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при проверке', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
+}
+</script>
+{% endblock %}

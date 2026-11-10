@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+
+{% block title %}Объявления — Standsticker{% endblock %}
+{% block page_title %}Объявления маркетплейса{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px;">
+  <div>
+    <h1 class="page-title">Объявления</h1>
+    <p class="page-subtitle">Витрина выставленных скинов и статистика просмотров в реальном времени</p>
+    {% if seller_id %}
+      <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+        <span class="badge badge-light" style="font-size: 11px;">
+          <i class="fa-solid fa-user-tag" style="margin-right: 4px;"></i> Фильтр по продавцу: ID {{ seller_id }}
+        </span>
+        <a href="/admin/ads?filter={{ filter_type }}" style="font-size: 11px; color: var(--text-muted); text-decoration: underline;">
+          Сбросить фильтр продавца
+        </a>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="ads-header-controls" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+    <!-- Filter Tabs -->
+    <div class="ads-filter-buttons" style="display: flex; gap: 6px; flex-wrap: wrap;">
+      <a href="/admin/ads?filter=active{% if seller_id %}&seller_id={{ seller_id }}{% endif %}" class="btn btn-sm {% if filter_type == 'active' %}btn-primary{% else %}btn-secondary{% endif %}">
+        <span>Активные</span>
+      </a>
+      <a href="/admin/ads?filter=top{% if seller_id %}&seller_id={{ seller_id }}{% endif %}" class="btn btn-sm {% if filter_type == 'top' %}btn-primary{% else %}btn-secondary{% endif %}">
+        <span>ТОП</span>
+      </a>
+      <a href="/admin/ads?filter=all{% if seller_id %}&seller_id={{ seller_id }}{% endif %}" class="btn btn-sm {% if filter_type == 'all' %}btn-primary{% else %}btn-secondary{% endif %}">
+        <span>Все</span>
+      </a>
+    </div>
+
+    <!-- Live Real-Time Control Pill -->
+    <div class="ads-live-pill" style="display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.28); border-radius: var(--radius-sm);">
+      <span class="live-dot" id="live-indicator-dot" title="Мониторинг новых лотов активен"></span>
+      <span style="font-size: 11.5px; font-weight: 700; color: #10b981; letter-spacing: 0.04em;">LIVE</span>
+      
+      <button 
+        type="button" 
+        id="btn-toggle-autorefresh" 
+        onclick="toggleAutoRefresh()" 
+        class="btn btn-sm" 
+        style="padding: 2px 8px; font-size: 11px; background: #181818; border: 1px solid var(--border-medium); margin-left: 2px;"
+        title="Автоматически добавлять новые лоты без перезагрузки страницы"
+      >
+        <i class="fa-solid fa-arrows-rotate" id="refresh-icon" style="margin-right: 4px; font-size: 10px;"></i>
+        Авто: <span id="autorefresh-label">ВКЛ</span>
+      </button>
+
+      <button 
+        type="button" 
+        id="btn-toggle-sound" 
+        onclick="toggleSoundAlert()" 
+        class="icon-btn" 
+        style="width: 26px; height: 26px; font-size: 11.5px; color: var(--text-secondary);" 
+        title="Звуковое оповещение о новых скинах"
+      >
+        <i class="fa-solid fa-volume-high" id="sound-icon"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+    <div class="panel-title">
+      <i class="fa-solid fa-boxes-stacked"></i>
+      <span id="ads-count-label">Найдено лотов: {{ ads|length }}</span>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted);" id="realtime-status-text">
+      <i class="fa-regular fa-clock" style="margin-right: 4px;"></i>Обновление в реальном времени
+    </div>
+  </div>
+
+  <!-- Realtime Alert Banner for New Ads (when auto-refresh is paused) -->
+  <div id="new-ads-alert-banner" class="ads-alert-banner" style="display: none; margin: 12px 16px; padding: 10px 14px; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: var(--radius-sm); align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; animation: fadeInSlide 0.3s ease;">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <i class="fa-solid fa-circle-exclamation" style="color: #60a5fa; font-size: 14px;"></i>
+      <span style="font-size: 12.5px; font-weight: 600; color: #93c5fd;" id="new-ads-alert-text">Появились новые объявления!</span>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="applyPendingNewAds()" style="padding: 4px 12px; font-size: 11.5px;">
+      <i class="fa-solid fa-arrow-down-long" style="margin-right: 5px;"></i> Показать сейчас
+    </button>
+  </div>
+
+  <div class="table-responsive" id="ads-table-container">
+    {% if ads %}
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Предмет</th>
+            <th>Наклейки</th>
+            <th>Цена</th>
+            <th>Продавец</th>
+            <th>Статус</th>
+            <th>Статистика</th>
+            <th>Дата</th>
+            <th style="text-align: right;">Действия</th>
+          </tr>
+        </thead>
+        <tbody id="ads-table-body">
+          {% for ad in ads %}
+            <tr id="ad-row-{{ ad.id }}" data-ad-id="{{ ad.id }}">
+              <td>
+                <a href="/admin/ads/{{ ad.id }}" title="Открыть карточку лота">
+                  <span class="badge badge-outline">#{{ ad.id }}</span>
+                </a>
+              </td>
+              <td>
+                <div style="font-weight: 600;">
+                  <a href="/admin/ads/{{ ad.id }}" style="color: var(--text-primary); text-decoration: none;" title="Открыть карточку лота">
+                    {{ ad.weapon_model }} | {{ ad.skin_name }}
+                  </a>
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted);">{{ ad.category }}</div>
+              </td>
+              <td>
+                <span class="badge">
+                  {% if ad.sticker_count == 0 %}
+                    Без наклеек
+                  {% else %}
+                    {{ ad.sticker_count }} шт. • {{ ad.sticker_rarity }}
+                  {% endif %}
+                </span>
+              </td>
+              <td>
+                <strong style="color: var(--text-primary); font-size: 13.5px;">
+                  {{ ad.price_gold }} G
+                </strong>
+              </td>
+              <td>
+                <a href="/admin/ads?seller_id={{ ad.seller_id }}" style="color: var(--text-secondary); text-decoration: underline;" title="Показать все лоты продавца">
+                  ID {{ ad.seller_id }}
+                </a>
+              </td>
+              <td>
+                {% if ad.is_active %}
+                  {% if ad.is_top %}
+                    <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">
+                      <i class="fa-solid fa-fire" style="margin-right: 3px;"></i> ТОП
+                    </span>
+                  {% else %}
+                    <span class="badge badge-outline">Активен</span>
+                  {% endif %}
+                {% else %}
+                  <span class="badge badge-outline" style="color: var(--text-dim);">Архив</span>
+                {% endif %}
+              </td>
+              <td>
+                <div style="font-size: 11.5px; color: var(--text-muted);">
+                  <i class="fa-regular fa-eye" style="margin-right: 3px;"></i> <span class="row-views">{{ ad.views_count }}</span>
+                  <span style="margin: 0 4px; color: var(--border-subtle);">•</span>
+                  <i class="fa-regular fa-comment-dots" style="margin-right: 3px;"></i> <span class="row-clicks">{{ ad.clicks_count }}</span>
+                </div>
+              </td>
+              <td>{{ ad.created_at.strftime('%d.%m.%Y') if ad.created_at else '—' }}</td>
+              <td style="text-align: right;">
+                <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end;">
+                  <a 
+                    href="/admin/ads/{{ ad.id }}" 
+                    class="btn btn-secondary btn-sm" 
+                    title="Просмотреть объявление как в Telegram"
+                    style="padding: 3px 8px; font-size: 11.5px;"
+                  >
+                    <i class="fa-solid fa-eye" style="margin-right: 4px;"></i>
+                    <span>Просмотр</span>
+                  </a>
+                  {% if ad.is_active %}
+                    <button 
+                      class="btn btn-danger btn-sm" 
+                      title="Снять с продажи"
+                      onclick="deactivateAd({{ ad.id }})"
+                      style="padding: 3px 8px; font-size: 11.5px;"
+                    >
+                      <span>Снять</span>
+                    </button>
+                  {% else %}
+                    <button 
+                      class="btn btn-primary btn-sm" 
+                      title="Активировать"
+                      onclick="activateAd({{ ad.id }})"
+                      style="padding: 3px 8px; font-size: 11.5px;"
+                    >
+                      <span>Включить</span>
+                    </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div id="no-ads-placeholder" style="text-align: center; padding: 40px 16px; color: var(--text-muted);">
+        <p style="font-size: 13px;">Объявления не найдены.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// --------------------------------------------------------------------------
+// Real-Time Live Listings Manager
+// --------------------------------------------------------------------------
+(function() {
+  const currentFilter = "{{ filter_type }}";
+  const currentSellerId = {% if seller_id %}{{ seller_id }}{% else %}null{% endif %};
+  
+  // Track maximum known ad ID on the page
+  let maxAdId = 0;
+  {% if ads and ads|length > 0 %}
+    maxAdId = {{ ads[0].id }};
+    {% for a in ads %}
+      if ({{ a.id }} > maxAdId) maxAdId = {{ a.id }};
+    {% endfor %}
+  {% endif %}
+
+  let autoRefresh = localStorage.getItem('ads_autorefresh') !== 'false';
+  let soundAlert = localStorage.getItem('ads_sound') === 'true';
+  let pendingAdsQueue = [];
+  let pollIntervalId = null;
+
+  // Initialize UI controls
+  function updateControlsUI() {
+    const label = document.getElementById('autorefresh-label');
+    const refreshIcon = document.getElementById('refresh-icon');
+    if (label) label.innerText = autoRefresh ? 'ВКЛ' : 'ВЫКЛ';
+    if (refreshIcon) {
+      if (autoRefresh) {
+        refreshIcon.classList.add('fa-spin');
+      } else {
+        refreshIcon.classList.remove('fa-spin');
+      }
+    }
+
+    const soundIcon = document.getElementById('sound-icon');
+    if (soundIcon) {
+      soundIcon.className = soundAlert ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+      soundIcon.style.color = soundAlert ? '#10b981' : 'var(--text-muted)';
+    }
+  }
+
+  window.toggleAutoRefresh = function() {
+    autoRefresh = !autoRefresh;
+    localStorage.setItem('ads_autorefresh', autoRefresh);
+    updateControlsUI();
+    showToast(autoRefresh ? 'Автообновление (Live) включено' : 'Автообновление приостановлено', 'info');
+    if (autoRefresh && pendingAdsQueue.length > 0) {
+      applyPendingNewAds();
+    }
+  };
+
+  window.toggleSoundAlert = function() {
+    soundAlert = !soundAlert;
+    localStorage.setItem('ads_sound', soundAlert);
+    updateControlsUI();
+    if (soundAlert) {
+      playNewAdChime();
+      showToast('Звуковые уведомления включены', 'success');
+    } else {
+      showToast('Звуковые уведомления отключены', 'info');
+    }
+  };
+
+  // Web Audio API Synthesizer Chime
+  function playNewAdChime() {
+    if (!soundAlert) return;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+
+      function note(freq, start, duration) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+        gain.gain.setValueAtTime(0.001, ctx.currentTime + start);
+        gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + duration);
+      }
+
+      note(587.33, 0.0, 0.12); // D5
+      note(880.00, 0.1, 0.18); // A5
+    } catch (e) {
+      console.debug('Audio chime skipped:', e);
+    }
+  }
+
+  function renderAdRowHtml(ad) {
+    const isTopBadge = ad.is_top 
+      ? '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);"><i class="fa-solid fa-fire" style="margin-right: 3px;"></i> ТОП</span>'
+      : '<span class="badge badge-outline">Активен</span>';
+
+    return `
+      <tr id="ad-row-${ad.id}" data-ad-id="${ad.id}" class="realtime-new-row">
+        <td>
+          <a href="/admin/ads/${ad.id}" title="Открыть карточку лота">
+            <span class="badge badge-outline" style="border-color: #10b981; color: #10b981;">#${ad.id} NEW</span>
+          </a>
+        </td>
+        <td>
+          <div style="font-weight: 600;">
+            <a href="/admin/ads/${ad.id}" style="color: var(--text-primary); text-decoration: none;" title="Открыть карточку лота">
+              ${ad.weapon_model} | ${ad.skin_name}
+            </a>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted);">${ad.category}</div>
+        </td>
+        <td>
+          <span class="badge">${ad.sticker_label}</span>
+        </td>
+        <td>
+          <strong style="color: var(--text-primary); font-size: 13.5px;">${ad.price_gold} G</strong>
+        </td>
+        <td>
+          <a href="/admin/ads?seller_id=${ad.seller_id}" style="color: var(--text-secondary); text-decoration: underline;" title="Показать все лоты продавца">
+            ID ${ad.seller_id}
+          </a>
+        </td>
+        <td>${isTopBadge}</td>
+        <td>
+          <div style="font-size: 11.5px; color: var(--text-muted);">
+            <i class="fa-regular fa-eye" style="margin-right: 3px;"></i> 0
+            <span style="margin: 0 4px; color: var(--border-subtle);">•</span>
+            <i class="fa-regular fa-comment-dots" style="margin-right: 3px;"></i> 0
+          </div>
+        </td>
+        <td>${ad.created_at}</td>
+        <td style="text-align: right;">
+          <div style="display: inline-flex; gap: 6px; align-items: center; justify-content: flex-end;">
+            <a href="/admin/ads/${ad.id}" class="btn btn-secondary btn-sm" title="Просмотреть объявление" style="padding: 3px 8px; font-size: 11.5px;">
+              <i class="fa-solid fa-eye" style="margin-right: 4px;"></i>
+              <span>Просмотр</span>
+            </a>
+            <button class="btn btn-danger btn-sm" title="Снять с продажи" onclick="deactivateAd(${ad.id})" style="padding: 3px 8px; font-size: 11.5px;">
+              <span>Снять</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  function injectNewAdsToTable(newAds) {
+    let tbody = document.getElementById('ads-table-body');
+    const container = document.getElementById('ads-table-container');
+
+    // If table didn't exist (previously 0 ads), create table structure
+    if (!tbody) {
+      container.innerHTML = `
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Предмет</th>
+              <th>Наклейки</th>
+              <th>Цена</th>
+              <th>Продавец</th>
+              <th>Статус</th>
+              <th>Статистика</th>
+              <th>Дата</th>
+              <th style="text-align: right;">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="ads-table-body"></tbody>
+        </table>
+      `;
+      tbody = document.getElementById('ads-table-body');
+    }
+
+    // Sort ascending by ID so newer ads end up at top when prepending
+    const sorted = [...newAds].sort((a, b) => a.id - b.id);
+    sorted.forEach(ad => {
+      if (!document.getElementById(`ad-row-${ad.id}`)) {
+        tbody.insertAdjacentHTML('afterbegin', renderAdRowHtml(ad));
+      }
+    });
+  }
+
+  window.applyPendingNewAds = function() {
+    if (pendingAdsQueue.length === 0) return;
+    injectNewAdsToTable(pendingAdsQueue);
+    pendingAdsQueue = [];
+    const banner = document.getElementById('new-ads-alert-banner');
+    if (banner) banner.style.display = 'none';
+  };
+
+  async function checkRealtimeAds() {
+    try {
+      const url = `/admin/api/ads/realtime-check?last_known_id=${maxAdId}&filter=${encodeURIComponent(currentFilter)}${currentSellerId ? `&seller_id=${currentSellerId}` : ''}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Update total count counter
+      const countLabel = document.getElementById('ads-count-label');
+      if (countLabel && data.total_count !== undefined) {
+        countLabel.innerText = `Найдено лотов: ${data.total_count}`;
+      }
+
+      if (data.has_new && data.new_ads && data.new_ads.length > 0) {
+        playNewAdChime();
+
+        // Update maximum known ID
+        if (data.latest_ad_id > maxAdId) {
+          maxAdId = data.latest_ad_id;
+        }
+
+        const latestAd = data.new_ads[0];
+        showToast(`⚡ Новое объявление: ${latestAd.weapon_model} | ${latestAd.skin_name} (${latestAd.price_gold} G)`, 'success');
+
+        if (autoRefresh) {
+          injectNewAdsToTable(data.new_ads);
+        } else {
+          // Accumulate in queue and show banner
+          data.new_ads.forEach(ad => {
+            if (!pendingAdsQueue.some(x => x.id === ad.id)) {
+              pendingAdsQueue.push(ad);
+            }
+          });
+          const banner = document.getElementById('new-ads-alert-banner');
+          const bannerText = document.getElementById('new-ads-alert-text');
+          if (banner && bannerText) {
+            bannerText.innerText = `Появились новые объявления (+${pendingAdsQueue.length})!`;
+            banner.style.display = 'flex';
+          }
+        }
+      }
+    } catch (err) {
+      console.debug('Realtime poll skipped:', err);
+    }
+  }
+
+  // Start polling every 8 seconds
+  document.addEventListener('DOMContentLoaded', () => {
+    updateControlsUI();
+    pollIntervalId = setInterval(checkRealtimeAds, 8000);
+  });
+})();
+</script>
+{% endblock %}

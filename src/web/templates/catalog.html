@@ -1,0 +1,687 @@
+{% extends "base.html" %}
+
+{% block title %}Управление каталогом — Standsticker{% endblock %}
+{% block page_title %}Каталог предметов и скинов{% endblock %}
+
+{% block content %}
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Категорий в каталоге</div>
+    <div class="kpi-value" id="kpi-total-categories">{{ total_categories }}</div>
+    <div class="kpi-sub">Винтовки, Пистолеты, Дробовики и др.</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Моделей оружия</div>
+    <div class="kpi-value" id="kpi-total-weapons">{{ total_weapons }}</div>
+    <div class="kpi-sub">Все виды вооружения Standsticker</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-label">Всего скинов</div>
+    <div class="kpi-value" id="kpi-total-skins">{{ total_skins }}</div>
+    <div class="kpi-sub">Доступно для выбора в боте</div>
+  </div>
+</div>
+
+<!-- Creation / Quick Add Card -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <div class="catalog-tab-bar">
+      <button type="button" class="btn btn-secondary btn-sm catalog-tab-btn active" id="tab-btn-skin" onclick="switchAddTab('skin')">
+        <i class="fa-solid fa-paintbrush" style="margin-right: 6px;"></i> Добавить скин
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm catalog-tab-btn" id="tab-btn-weapon" onclick="switchAddTab('weapon')">
+        <i class="fa-solid fa-gun" style="margin-right: 6px;"></i> Добавить модель оружия
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm catalog-tab-btn" id="tab-btn-category" onclick="switchAddTab('category')">
+        <i class="fa-solid fa-folder-plus" style="margin-right: 6px;"></i> Добавить категорию
+      </button>
+    </div>
+    <button type="button" class="btn btn-danger btn-sm" onclick="resetCatalogToDefault()" title="Восстановить базовый комплект коллекций Standoff 2">
+      <i class="fa-solid fa-rotate-left" style="margin-right: 6px;"></i> Сбросить к заводским
+    </button>
+  </div>
+
+  <!-- Form 1: Add Skin -->
+  <form id="form-add-skin" onsubmit="submitAddSkin(event)" style="display: block;">
+    <div class="catalog-form-grid">
+      <div class="form-group">
+        <label class="form-label" for="skin-category-select" style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">Категория</label>
+        <select id="skin-category-select" class="form-control" onchange="onSkinCategoryChange()" required style="width: 100%; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+          <option value="" disabled selected>-- Выберите категорию --</option>
+          {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="skin-weapon-select" style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">Модель оружия</label>
+        <select id="skin-weapon-select" class="form-control" required style="width: 100%; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+          <option value="" disabled selected>-- Сначала выберите категорию --</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="skin-name-input" style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">Название скина</label>
+        <input type="text" id="skin-name-input" placeholder="Например: Dragon Lore" required maxlength="60" class="form-control" style="width: 100%; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label form-label-spacer" aria-hidden="true" style="display: block; font-size: 11px; margin-bottom: 6px; visibility: hidden; user-select: none;">&nbsp;</label>
+        <button type="submit" id="btn-save-skin" class="btn btn-primary catalog-submit-btn">
+          <i class="fa-solid fa-plus" style="margin-right: 6px;"></i> Добавить скин
+        </button>
+      </div>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+      <i class="fa-solid fa-circle-info" style="margin-right: 4px;"></i> Указывайте одно название скина. После добавления скин сразу станет доступен для выбора в боте.
+    </div>
+  </form>
+
+  <!-- Form 2: Add Weapon Model -->
+  <form id="form-add-weapon" onsubmit="submitAddWeapon(event)" style="display: none;">
+    <div class="catalog-form-grid">
+      <div class="form-group">
+        <label class="form-label" for="wep-category-select" style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">Категория</label>
+        <select id="wep-category-select" class="form-control" required style="width: 100%; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+          <option value="" disabled selected>-- Выберите категорию --</option>
+          {% for cat in categories %}
+            <option value="{{ cat }}">{{ cat }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="weapon-name-input" style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">Название новой модели оружия</label>
+        <input type="text" id="weapon-name-input" placeholder="Например: M4A1, Desert Eagle" required maxlength="60" class="form-control" style="width: 100%; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label form-label-spacer" aria-hidden="true" style="display: block; font-size: 11px; margin-bottom: 6px; visibility: hidden; user-select: none;">&nbsp;</label>
+        <button type="submit" id="btn-save-weapon" class="btn btn-primary catalog-submit-btn">
+          <i class="fa-solid fa-plus" style="margin-right: 6px;"></i> Добавить модель
+        </button>
+      </div>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+      <i class="fa-solid fa-circle-info" style="margin-right: 4px;"></i> Модель оружия появится в списке выбранной категории. Затем вы сможете добавить к ней скины.
+    </div>
+  </form>
+
+  <!-- Form 3: Add Category -->
+  <form id="form-add-category" onsubmit="submitAddCategory(event)" style="display: none;">
+    <div class="catalog-form-grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));">
+      <div class="form-group">
+        <label class="form-label" for="category-name-input" style="display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 6px;">Название новой категории</label>
+        <input type="text" id="category-name-input" placeholder="Например: Гранаты, Брелоки" required maxlength="60" class="form-control" style="width: 100%; background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label form-label-spacer" aria-hidden="true" style="display: block; font-size: 11px; margin-bottom: 6px; visibility: hidden; user-select: none;">&nbsp;</label>
+        <button type="submit" id="btn-save-category" class="btn btn-primary catalog-submit-btn">
+          <i class="fa-solid fa-plus" style="margin-right: 6px;"></i> Создать категорию
+        </button>
+      </div>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+      <i class="fa-solid fa-circle-info" style="margin-right: 4px;"></i> Создает новый основной раздел вооружения в боте.
+    </div>
+  </form>
+</div>
+
+<!-- Interactive Catalog Explorer Card -->
+<div class="card">
+  <div class="card-header" style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <h3 style="font-size: 15px; font-weight: 600; font-family: var(--font-heading); color: var(--text-primary); margin: 0;">
+      <i class="fa-solid fa-layer-group" style="margin-right: 8px;"></i>Управление моделями и скинами
+    </h3>
+
+    <div class="catalog-search-bar" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+      <!-- Category Filter Dropdown -->
+      <select id="filter-category-select" onchange="applyCatalogFilter()" style="background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 10px; border-radius: var(--radius-sm); font-size: 12px; height: 38px;">
+        <option value="ALL">Все категории</option>
+        {% for cat in categories %}
+          <option value="{{ cat }}">{{ cat }}</option>
+        {% endfor %}
+      </select>
+
+      <!-- Realtime Search -->
+      <div style="position: relative; flex: 1; min-width: 200px;">
+        <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 10px; top: 12px; color: var(--text-muted); font-size: 12px;"></i>
+        <input type="text" id="catalog-search-input" oninput="applyCatalogFilter()" placeholder="Быстрый поиск модели или скина..." style="background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px 8px 30px; border-radius: var(--radius-sm); font-size: 12px; width: 100%; height: 38px; box-sizing: border-box;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Catalog Explorer Container -->
+  <div id="catalog-explorer-list" style="display: flex; flex-direction: column; gap: 14px;">
+    <!-- Rendered via JS for high performance -->
+  </div>
+</div>
+
+<!-- Universal Edit Modal -->
+<div class="modal-overlay" id="catalog-edit-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000; align-items: center; justify-content: center;">
+  <div class="modal-card" style="background: #141414; border: 1px solid var(--border-medium); border-radius: var(--radius-md); width: 100%; max-width: 440px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 10px;">
+      <h4 id="edit-modal-title" style="margin: 0; font-family: var(--font-heading); font-size: 14px; color: var(--text-primary);">
+        Редактирование
+      </h4>
+      <button type="button" onclick="closeCatalogEditModal()" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <form id="catalog-edit-form" onsubmit="submitCatalogEdit(event)">
+      <input type="hidden" id="edit-modal-type" value="">
+      <input type="hidden" id="edit-modal-category" value="">
+      <input type="hidden" id="edit-modal-weapon" value="">
+      <input type="hidden" id="edit-modal-old-val" value="">
+
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label id="edit-modal-label" class="form-label" style="display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 6px;">Новое название</label>
+        <input type="text" id="edit-modal-input" required maxlength="60" class="form-control" style="width: 100%; background: #1c1c1f; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 13px;">
+        <div id="edit-modal-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">При переименовании существующие лоты на маркете автоматически обновятся.</div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="closeCatalogEditModal()">Отмена</button>
+        <button type="submit" id="btn-save-edit" class="btn btn-primary btn-sm">
+          <i class="fa-solid fa-check" style="margin-right: 4px;"></i> Сохранить
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentCatalog = {{ catalog_json | safe }};
+
+function switchAddTab(tab) {
+  document.getElementById('form-add-skin').style.display = tab === 'skin' ? 'block' : 'none';
+  document.getElementById('form-add-weapon').style.display = tab === 'weapon' ? 'block' : 'none';
+  document.getElementById('form-add-category').style.display = tab === 'category' ? 'block' : 'none';
+
+  document.querySelectorAll('.catalog-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-btn-' + tab).classList.add('active');
+}
+
+function onSkinCategoryChange() {
+  const catSelect = document.getElementById('skin-category-select');
+  const wepSelect = document.getElementById('skin-weapon-select');
+  const selectedCat = catSelect.value;
+
+  wepSelect.innerHTML = '<option value="" disabled selected>-- Выберите оружие --</option>';
+  if (!selectedCat || !currentCatalog[selectedCat]) return;
+
+  const weapons = Object.keys(currentCatalog[selectedCat]);
+  weapons.forEach(w => {
+    const opt = document.createElement('option');
+    opt.value = w;
+    opt.textContent = w;
+    wepSelect.appendChild(opt);
+  });
+}
+
+function renderCatalogExplorer() {
+  const container = document.getElementById('catalog-explorer-list');
+  const catFilter = document.getElementById('filter-category-select').value;
+  const search = document.getElementById('catalog-search-input').value.trim().toLowerCase();
+
+  container.innerHTML = '';
+
+  let matchedWeaponsCount = 0;
+  let totalSkinsCount = 0;
+
+  for (const [category, weapons] of Object.entries(currentCatalog)) {
+    if (catFilter !== 'ALL' && category !== catFilter) continue;
+
+    const matchingWeapons = [];
+    for (const [weapon, skins] of Object.entries(weapons)) {
+      totalSkinsCount += skins.length;
+
+      const matchesWeapon = weapon.toLowerCase().includes(search);
+      const matchesCategory = category.toLowerCase().includes(search);
+      const matchingSkins = search
+        ? skins.filter(s => s.toLowerCase().includes(search))
+        : skins;
+
+      if (!search || matchesWeapon || matchesCategory || matchingSkins.length > 0) {
+        matchingWeapons.push({ weapon, skins, matchingSkins });
+      }
+    }
+
+    if (matchingWeapons.length === 0 && search) continue;
+
+    matchedWeaponsCount += matchingWeapons.length;
+
+    const catBox = document.createElement('div');
+    catBox.className = 'category-group-box';
+
+    const catHeader = document.createElement('div');
+    catHeader.className = 'category-group-header';
+    catHeader.innerHTML = `
+      <div class="category-group-title">
+        <i class="fa-solid fa-folder-open" style="color: #60a5fa; font-size: 15px;"></i>
+        <span style="font-weight: 700; font-size: 15px; color: var(--text-primary);">${category}</span>
+        <span class="badge" style="background: #1e2430; border: 1px solid #2b3952; color: #60a5fa; font-size: 11px; padding: 2px 7px; border-radius: 4px;">${Object.keys(weapons).length} моделей</span>
+      </div>
+      <div class="category-group-actions">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="openEditModal('category', '', '', '${category}')" title="Переименовать категорию «${category}»">
+          <i class="fa-solid fa-pen"></i> Переименовать
+        </button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="deleteCategoryItem('${category}')" title="Удалить категорию «${category}» со всеми моделями">
+          <i class="fa-solid fa-trash"></i> Удалить категорию
+        </button>
+      </div>
+    `;
+    catBox.appendChild(catHeader);
+
+    const weaponsList = document.createElement('div');
+    weaponsList.style.cssText = 'display: flex; flex-direction: column; gap: 10px;';
+
+    matchingWeapons.forEach(({ weapon, skins, matchingSkins }) => {
+      const wepCard = document.createElement('div');
+      wepCard.className = 'weapon-box';
+
+      const headerRow = document.createElement('div');
+      headerRow.className = 'weapon-box-header';
+
+      const titleCol = document.createElement('div');
+      titleCol.className = 'weapon-title-group';
+      titleCol.innerHTML = `
+        <span style="font-weight: 700; font-size: 14px; color: var(--text-primary);">${weapon}</span>
+        <span class="badge" style="background: #232329; border: 1px solid #32323a; color: #a1a1aa; font-size: 11px; padding: 2px 7px; border-radius: 4px;">${skins.length} скинов</span>
+      `;
+
+      const actionsCol = document.createElement('div');
+      actionsCol.className = 'weapon-actions-group';
+      actionsCol.innerHTML = `
+        <button type="button" class="btn btn-secondary btn-sm" onclick="quickAddSkin('${category}', '${weapon}')" title="Добавить скин к этой модели">
+          <i class="fa-solid fa-plus"></i> Скин
+        </button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="openEditModal('weapon', '${category}', '${weapon}', '${weapon}')" title="Переименовать модель оружия">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="deleteWeaponModel('${category}', '${weapon}')" title="Удалить модель оружия и все её скины">
+          <i class="fa-solid fa-trash"></i> Удалить модель
+        </button>
+      `;
+
+      headerRow.appendChild(titleCol);
+      headerRow.appendChild(actionsCol);
+      wepCard.appendChild(headerRow);
+
+      const skinsContainer = document.createElement('div');
+      skinsContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px;';
+
+      if (skins.length === 0) {
+        skinsContainer.innerHTML = '<span style="font-size: 12px; color: var(--text-muted); font-style: italic;">Скинов пока нет. Нажмите «+ Скин» выше для добавления.</span>';
+      } else {
+        skins.forEach(sk => {
+          const isHighlighted = search && sk.toLowerCase().includes(search);
+          const chip = document.createElement('div');
+          chip.style.cssText = `display: inline-flex; align-items: center; gap: 6px; background: ${isHighlighted ? '#1e293b' : '#202024'}; border: 1px solid ${isHighlighted ? '#3b82f6' : '#2e2e34'}; border-radius: 4px; padding: 3px 8px; font-size: 12px; color: ${isHighlighted ? '#93c5fd' : '#e4e4e7'};`;
+
+          chip.innerHTML = `
+            <span>${sk}</span>
+            <button type="button" onclick="openEditModal('skin', '${category}', '${weapon}', '${sk}')" title="Переименовать скин" style="background: none; border: none; padding: 0; color: #a1a1aa; cursor: pointer; font-size: 10px; margin-left: 2px;">
+              <i class="fa-solid fa-pen"></i>
+            </button>
+            <button type="button" onclick="deleteSkinItem('${category}', '${weapon}', '${sk}')" title="Удалить скин" style="background: none; border: none; padding: 0; color: #f87171; cursor: pointer; font-size: 10px;">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          `;
+          skinsContainer.appendChild(chip);
+        });
+      }
+
+      wepCard.appendChild(skinsContainer);
+      weaponsList.appendChild(wepCard);
+    });
+
+    catBox.appendChild(weaponsList);
+    container.appendChild(catBox);
+  }
+
+  if (matchedWeaponsCount === 0) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 40px 16px; color: var(--text-muted);">
+        <i class="fa-solid fa-magnifying-glass" style="font-size: 32px; margin-bottom: 8px; opacity: 0.4;"></i>
+        <div style="font-size: 13px;">Ничего не найдено по вашему фильтру</div>
+      </div>
+    `;
+  }
+}
+
+function applyCatalogFilter() {
+  renderCatalogExplorer();
+}
+
+function quickAddSkin(category, weapon) {
+  switchAddTab('skin');
+  const catSelect = document.getElementById('skin-category-select');
+  catSelect.value = category;
+  onSkinCategoryChange();
+  const wepSelect = document.getElementById('skin-weapon-select');
+  wepSelect.value = weapon;
+  const input = document.getElementById('skin-name-input');
+  input.focus();
+}
+
+// -------------------------------------------------------------
+// SUBMIT HANDLERS
+// -------------------------------------------------------------
+
+async function submitAddSkin(event) {
+  event.preventDefault();
+  const cat = document.getElementById('skin-category-select').value;
+  const wep = document.getElementById('skin-weapon-select').value;
+  const skinInput = document.getElementById('skin-name-input');
+  const skin = skinInput.value.trim();
+  const btn = document.getElementById('btn-save-skin');
+
+  if (!cat || !wep || !skin) {
+    showToast('Заполните категорию, оружие и название скина', 'warning');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Сохранение...';
+
+  try {
+    const res = await fetch('/admin/api/catalog/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: cat, weapon: wep, skin: skin })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Скин успешно добавлен!', 'success');
+      skinInput.value = '';
+      setTimeout(() => window.location.reload(), 400);
+    } else {
+      showToast(data.detail || 'Ошибка добавления скина', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-plus"></i> Добавить скин';
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при добавлении', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Добавить скин';
+  }
+}
+
+async function submitAddWeapon(event) {
+  event.preventDefault();
+  const cat = document.getElementById('wep-category-select').value;
+  const wepInput = document.getElementById('weapon-name-input');
+  const weapon = wepInput.value.trim();
+  const btn = document.getElementById('btn-save-weapon');
+
+  if (!cat || !weapon) {
+    showToast('Выберите категорию и введите название модели', 'warning');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
+
+  try {
+    const res = await fetch('/admin/api/catalog/weapon/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: cat, weapon: weapon })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Модель "${weapon}" успешно добавлена!`, 'success');
+      wepInput.value = '';
+      setTimeout(() => window.location.reload(), 400);
+    } else {
+      showToast(data.detail || 'Ошибка добавления модели', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-plus"></i> Добавить модель';
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при добавлении модели', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Добавить модель';
+  }
+}
+
+async function submitAddCategory(event) {
+  event.preventDefault();
+  const catInput = document.getElementById('category-name-input');
+  const cat = catInput.value.trim();
+  const btn = document.getElementById('btn-save-category');
+
+  if (!cat) {
+    showToast('Введите название новой категории', 'warning');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Создание...';
+
+  try {
+    const res = await fetch('/admin/api/catalog/category/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: cat })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Категория "${cat}" добавлена!`, 'success');
+      catInput.value = '';
+      setTimeout(() => window.location.reload(), 400);
+    } else {
+      showToast(data.detail || 'Ошибка создания категории', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-plus"></i> Создать категорию';
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при создании категории', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-plus"></i> Создать категорию';
+  }
+}
+
+// -------------------------------------------------------------
+// EDIT MODAL & ACTIONS
+// -------------------------------------------------------------
+
+function openEditModal(type, category, weapon, currentVal) {
+  const modal = document.getElementById('catalog-edit-modal');
+  const title = document.getElementById('edit-modal-title');
+  const label = document.getElementById('edit-modal-label');
+  const input = document.getElementById('edit-modal-input');
+
+  document.getElementById('edit-modal-type').value = type;
+  document.getElementById('edit-modal-category').value = category;
+  document.getElementById('edit-modal-weapon').value = weapon;
+  document.getElementById('edit-modal-old-val').value = currentVal;
+
+  if (type === 'weapon') {
+    title.innerHTML = `<i class="fa-solid fa-gun" style="margin-right: 6px;"></i> Переименовать модель оружия`;
+    label.textContent = `Модель в категории "${category}"`;
+  } else if (type === 'skin') {
+    title.innerHTML = `<i class="fa-solid fa-paintbrush" style="margin-right: 6px;"></i> Переименовать скин`;
+    label.textContent = `Скин для "${weapon}" (${category})`;
+  } else {
+    title.innerHTML = `<i class="fa-solid fa-folder" style="margin-right: 6px;"></i> Переименовать категорию`;
+    label.textContent = `Название категории`;
+  }
+
+  input.value = currentVal;
+  modal.style.display = 'flex';
+  input.focus();
+  input.select();
+}
+
+function closeCatalogEditModal() {
+  document.getElementById('catalog-edit-modal').style.display = 'none';
+}
+
+async function submitCatalogEdit(event) {
+  event.preventDefault();
+  const type = document.getElementById('edit-modal-type').value;
+  const category = document.getElementById('edit-modal-category').value;
+  const weapon = document.getElementById('edit-modal-weapon').value;
+  const oldVal = document.getElementById('edit-modal-old-val').value;
+  const newVal = document.getElementById('edit-modal-input').value.trim();
+  const btn = document.getElementById('btn-save-edit');
+
+  if (!newVal) {
+    showToast('Значение не может быть пустым', 'warning');
+    return;
+  }
+  if (newVal === oldVal) {
+    closeCatalogEditModal();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+  let endpoint = '';
+  let payload = {};
+
+  if (type === 'weapon') {
+    endpoint = '/admin/api/catalog/weapon/edit';
+    payload = { category, old_weapon: oldVal, new_weapon: newVal };
+  } else if (type === 'skin') {
+    endpoint = '/admin/api/catalog/edit';
+    payload = { category, weapon, old_skin: oldVal, new_skin: newVal };
+  } else {
+    endpoint = '/admin/api/catalog/category/edit';
+    payload = { old_category: oldVal, new_category: newVal };
+  }
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Успешно переименовано!', 'success');
+      closeCatalogEditModal();
+      setTimeout(() => window.location.reload(), 400);
+    } else {
+      showToast(data.detail || 'Ошибка сохранения', 'error');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Сохранить';
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при переименовании', 'error');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Сохранить';
+  }
+}
+
+// -------------------------------------------------------------
+// DELETE HANDLERS
+// -------------------------------------------------------------
+
+async function deleteCategoryItem(category) {
+  if (!confirm(`Вы действительно хотите удалить ВСЮ категорию "${category}" и ВСЕ входящие в неё модели оружия и скины?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin/api/catalog/category/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Категория "${category}" успешно удалена!`, 'success');
+      setTimeout(() => window.location.reload(), 300);
+    } else {
+      showToast(data.detail || 'Не удалось удалить категорию', 'error');
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при удалении категории', 'error');
+  }
+}
+
+async function deleteSkinItem(category, weapon, skin) {
+  if (!confirm(`Удалить скин "${skin}" (${category} / ${weapon}) из каталога?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin/api/catalog/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, weapon, skin })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Скин "${skin}" удален`, 'success');
+      setTimeout(() => window.location.reload(), 300);
+    } else {
+      showToast(data.detail || 'Не удалось удалить скин', 'error');
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при удалении скина', 'error');
+  }
+}
+
+async function deleteWeaponModel(category, weapon) {
+  if (!confirm(`Вы действительно хотите удалить модель "${weapon}" и ВСЕ её скины из каталога?`)) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin/api/catalog/weapon/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, weapon })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast(`Модель оружия "${weapon}" удалена из каталога`, 'success');
+      setTimeout(() => window.location.reload(), 300);
+    } else {
+      showToast(data.detail || 'Не удалось удалить модель', 'error');
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при удалении модели', 'error');
+  }
+}
+
+async function resetCatalogToDefault() {
+  if (!confirm('ВНИМАНИЕ! Вы точно хотите сбросить весь каталог к базовым официальным коллекциям Standoff 2? Все пользовательские изменения моделей и скинов будут восстановлены к оригиналу.')) {
+    return;
+  }
+
+  try {
+    const res = await fetch('/admin/api/catalog/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      showToast('Каталог сброшен к заводским коллекциям', 'success');
+      setTimeout(() => window.location.reload(), 500);
+    } else {
+      showToast(data.detail || 'Ошибка сброса каталога', 'error');
+    }
+  } catch (err) {
+    showToast('Сетевая ошибка при сбросе', 'error');
+  }
+}
+
+// Initial render
+document.addEventListener('DOMContentLoaded', () => {
+  renderCatalogExplorer();
+});
+</script>
+{% endblock %}

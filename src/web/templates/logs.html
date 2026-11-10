@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Логи системы — Standsticker{% endblock %}
+{% block page_title %}Системные логи платформы{% endblock %}
+
+{% block content %}
+<!-- Source Category Tabs -->
+<div class="tabs-container" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 12px; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+  <a href="/admin/logs?date={{ selected_date }}&level={{ selected_level }}&source=all&q={{ query or '' }}" class="tab-btn {% if selected_source == 'all' %}active{% endif %}">
+    <i class="fa-solid fa-list-ul"></i> Все логи <span class="tab-badge">{{ counts.all }}</span>
+  </a>
+  <a href="/admin/logs?date={{ selected_date }}&level={{ selected_level }}&source=bot&q={{ query or '' }}" class="tab-btn {% if selected_source == 'bot' %}active{% endif %}">
+    <i class="fa-solid fa-robot"></i> Telegram-бот <span class="tab-badge">{{ counts.bot }}</span>
+  </a>
+  <a href="/admin/logs?date={{ selected_date }}&level={{ selected_level }}&source=web&q={{ query or '' }}" class="tab-btn {% if selected_source == 'web' %}active{% endif %}">
+    <i class="fa-solid fa-globe"></i> Веб-админка <span class="tab-badge">{{ counts.web }}</span>
+  </a>
+</div>
+
+<!-- Filter Controls -->
+<div class="card" style="margin-bottom: 16px; padding: 14px 18px;">
+  <form method="GET" action="/admin/logs" class="logs-filter-form" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+    <input type="hidden" name="source" value="{{ selected_source }}">
+
+    <!-- Left Filters -->
+    <div class="logs-filter-group" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+      <!-- Date Selector -->
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Дата:</span>
+        <select name="date" class="form-control" onchange="this.form.submit()" style="background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;">
+          {% for d in available_dates %}
+            <option value="{{ d }}" {% if d == selected_date %}selected{% endif %}>{{ d }}{% if loop.first %} (Сегодня){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <!-- Level Filter -->
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Уровень:</span>
+        <select name="level" class="form-control" onchange="this.form.submit()" style="background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 6px 10px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 500;">
+          <option value="ALL" {% if selected_level == 'ALL' %}selected{% endif %}>Все уровни</option>
+          <option value="INFO" {% if selected_level == 'INFO' %}selected{% endif %}>INFO</option>
+          <option value="WARNING" {% if selected_level == 'WARNING' %}selected{% endif %}>WARNING</option>
+          <option value="ERROR" {% if selected_level == 'ERROR' %}selected{% endif %}>ERROR</option>
+          <option value="DEBUG" {% if selected_level == 'DEBUG' %}selected{% endif %}>DEBUG</option>
+        </select>
+      </div>
+
+      <!-- Search Input -->
+      <div style="display: flex; align-items: center; position: relative;">
+        <input type="text" name="q" value="{{ query or '' }}" placeholder="Поиск по тексту или модулю..." class="form-control search-logs-input" style="background: #181818; border: 1px solid var(--border-medium); color: var(--text-primary); padding: 6px 12px; border-radius: var(--radius-sm); font-size: 12px; width: 220px;">
+        {% if query %}
+          <a href="/admin/logs?date={{ selected_date }}&level={{ selected_level }}&source={{ selected_source }}" style="position: absolute; right: 8px; color: var(--text-muted); font-size: 11px;" title="Очистить поиск">
+            <i class="fa-solid fa-xmark"></i>
+          </a>
+        {% endif %}
+      </div>
+
+      <button type="submit" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px;">
+        <i class="fa-solid fa-magnifying-glass" style="margin-right: 4px;"></i> Найти
+      </button>
+    </div>
+
+    <!-- Right Actions: Refresh & Download .txt -->
+    <div class="logs-actions" style="display: flex; gap: 8px; align-items: center;">
+      <a href="/admin/logs?date={{ selected_date }}&level={{ selected_level }}&source={{ selected_source }}&q={{ query or '' }}" class="btn btn-secondary btn-sm" title="Обновить логи" style="padding: 6px 12px; font-size: 12px;">
+        <i class="fa-solid fa-rotate-right" style="margin-right: 4px;"></i> Обновить
+      </a>
+      <a href="/admin/logs/download?date={{ selected_date }}&source={{ selected_source }}" class="btn btn-primary btn-sm" title="Скачать файл логов в формате .txt" style="padding: 6px 14px; font-size: 12px; font-weight: 600;">
+        <i class="fa-solid fa-download" style="margin-right: 6px;"></i> Экспорт в .txt
+      </a>
+    </div>
+  </form>
+</div>
+
+<!-- Log Terminal Window -->
+<div class="card" style="padding: 0; overflow: hidden;">
+  <div style="background: #141416; padding: 10px 16px; border-bottom: 1px solid var(--border-subtle); display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center;">
+    <div style="display: flex; align-items: center; gap: 8px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--text-secondary);">
+      <i class="fa-solid fa-terminal" style="color: #60a5fa;"></i>
+      <span>logs/app_{{ selected_date }}.txt</span>
+      {% if selected_source == 'bot' %}
+        <span class="badge" style="background: #1e1e24; color: #cbd5e1; font-size: 10px; padding: 2px 6px;">Бот</span>
+      {% elif selected_source == 'web' %}
+        <span class="badge" style="background: #13202e; color: #93c5fd; font-size: 10px; padding: 2px 6px;">Админка</span>
+      {% endif %}
+      <span class="badge" style="background: #1f2937; color: #9ca3af; font-size: 10px; padding: 1px 6px;">{{ logs|length }} записей</span>
+    </div>
+    <div style="font-size: 11px; color: var(--text-muted);">
+      Авторотация каждые 24 часа • UTF-8
+    </div>
+  </div>
+
+  <div class="log-terminal" id="terminal-box" style="border: none; border-radius: 0; min-height: 480px; max-height: 680px;">
+    {% if logs %}
+      {% for entry in logs %}
+        <div class="log-line">
+          <div class="log-meta-row" style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <span class="log-time">{{ entry.timestamp }}</span>
+            {% if entry.level == 'INFO' %}
+              <span class="log-badge log-badge-info">INFO</span>
+            {% elif entry.level == 'WARNING' or entry.level == 'WARN' %}
+              <span class="log-badge log-badge-warning">WARN</span>
+            {% elif entry.level == 'ERROR' or entry.level == 'CRITICAL' %}
+              <span class="log-badge log-badge-error">ERR</span>
+            {% else %}
+              <span class="log-badge log-badge-debug">{{ entry.level }}</span>
+            {% endif %}
+
+            {% if selected_source == 'all' %}
+              {% if entry.source == 'bot' %}
+                <span class="badge" style="background: #1e1e24; color: #94a3b8; font-size: 9px; padding: 1px 5px;">БОТ</span>
+              {% else %}
+                <span class="badge" style="background: #13202e; color: #60a5fa; font-size: 9px; padding: 1px 5px;">ВЕБ</span>
+              {% endif %}
+            {% endif %}
+
+            <span class="log-logger">[{{ entry.logger }}]</span>
+          </div>
+          <span class="log-msg">{{ entry.message }}</span>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div style="text-align: center; padding: 64px 16px; color: var(--text-muted);">
+        <i class="fa-solid fa-file-circle-check" style="font-size: 36px; margin-bottom: 12px; opacity: 0.3;"></i>
+        <div style="font-size: 13px; font-weight: 500; color: var(--text-secondary);">Записей не обнаружено</div>
+        <div style="font-size: 11px; margin-top: 4px;">По заданным фильтрам лог за выбранную дату пуст или файл ещё формируется.</div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-scroll terminal to bottom on load
+document.addEventListener("DOMContentLoaded", function() {
+  const terminal = document.getElementById("terminal-box");
+  if (terminal) {
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+});
+</script>
+{% endblock %}
