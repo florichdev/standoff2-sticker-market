@@ -205,6 +205,15 @@ class ChatSession(Base):
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    buyer_confirmed_deal: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    seller_confirmed_deal: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True, default=None
+    )
+    deal_completed: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
 
     __table_args__ = (
         Index("ix_chat_sessions_buyer_active", "buyer_id", "is_active"),

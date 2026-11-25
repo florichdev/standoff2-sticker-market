@@ -16,7 +16,11 @@ import uvicorn
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramForbiddenError,
+    TelegramRetryAfter,
+)
 from fastapi import (
     Cookie,
     Depends,
@@ -55,10 +59,14 @@ from src.data.game_catalog import (
     sync_catalog_if_modified,
 )
 from src.data.settings_manager import (
+    format_main_menu_signature,
     get_autopost_channel_id,
+    get_main_menu_signature,
     get_market_settings,
     get_max_active_ads,
+    get_menu_last_broadcast_sig,
     is_autopost_enabled,
+    set_menu_last_broadcast_sig,
     update_market_settings,
 )
 from src.database.base import async_session_maker, close_db
@@ -66,6 +74,7 @@ from src.database.models import Ad, Referral, User
 from src.database.repositories.admin_repo import AdminRepository
 from src.database.repositories.referral_repo import ReferralRepository
 from src.database.repositories.user_repo import UserRepository
+from src.keyboards.main_menu import get_main_menu_keyboard
 from src.services.autopost import schedule_ad_broadcast_cleanup
 from src.services.broadcast import broadcast_worker
 from src.services.logger_service import (
@@ -109,6 +118,12 @@ async def lifespan(app: fastapi.FastAPI):
         app.state.bot_username = "Standstickerbot"
 
     yield
+
+    for task in list(_background_tasks):
+        if not task.done():
+            task.cancel()
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
 
     bot = getattr(app.state, "bot", None)
     if bot:
@@ -1210,6 +1225,14 @@ class DeleteCatalogSkinPayload(BaseModel):
     skin: str = Field(..., min_length=1, max_length=100)
 
 
+class CustomAdButtonPayload(BaseModel):
+    enabled: bool = False
+    text: str = Field(default="Партнёр", max_length=100)
+    url: str = Field(default="https://example.com/", max_length=500)
+    message_text: str = Field(default="", max_length=1000)
+    link_button_text: str = Field(default="🌐 Перейти на сайт", max_length=100)
+
+
 class UpdateSettingsPayload(BaseModel):
     max_active_ads: int = Field(..., ge=1, le=100)
     stars_turbo_price: int = Field(..., ge=1, le=10000)
@@ -1217,6 +1240,7 @@ class UpdateSettingsPayload(BaseModel):
     autopost_channel_id: str | None = Field(default=None)
     autopost_enabled: bool | None = Field(default=None)
     referrals_for_top: int = Field(default=3, ge=1, le=50)
+    custom_ad_button: CustomAdButtonPayload | None = Field(default=None)
 
 
 @app.post("/admin/api/catalog/category/add")
@@ -1483,13 +1507,119 @@ async def api_test_autopost(
     }
 
 
+async def _sync_menu_keyboard_worker(
+    bot: Bot,
+    sig_str: str,
+    enabled: bool,
+    button_text: str,
+) -> None:
+    """Silently push refreshed main menu ReplyKeyboardMarkup to all active bot users."""
+    try:
+        async with async_session_maker() as session:
+            admin_repo = AdminRepository(session)
+            user_ids = await admin_repo.get_all_active_user_ids()
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed loading active users for menu keyboard sync: %s", exc)
+        return
+
+    if not user_ids:
+        if format_main_menu_signature(get_main_menu_signature()) == sig_str:
+            set_menu_last_broadcast_sig(sig_str)
+        return
+
+    admin_set = set(settings.ADMIN_IDS)
+    user_ids.sort(key=lambda uid: (0 if uid in admin_set else 1, -uid))
+
+    keyboard = get_main_menu_keyboard()
+    if enabled and button_text:
+        notice_text = (
+            "🔄 <b>Главное меню бота обновлено!</b>\n"
+            f"Добавлена кнопка: <b>{escape(button_text)}</b> 👇"
+        )
+    else:
+        notice_text = "🔄 <b>Главное меню бота обновлено.</b>"
+
+    sent_count = 0
+    deactivated_ids: list[int] = []
+
+    try:
+        for uid in user_ids:
+            try:
+                await bot.send_message(
+                    chat_id=uid,
+                    text=notice_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                    disable_notification=True,
+                )
+                sent_count += 1
+            except TelegramRetryAfter as exc:
+                await asyncio.sleep(exc.retry_after + 0.5)
+                try:
+                    await bot.send_message(
+                        chat_id=uid,
+                        text=notice_text,
+                        reply_markup=keyboard,
+                        parse_mode="HTML",
+                        disable_notification=True,
+                    )
+                    sent_count += 1
+                except TelegramForbiddenError:
+                    deactivated_ids.append(uid)
+                except TelegramAPIError as retry_exc:
+                    logger.debug("Menu sync retry failed for user %d: %s", uid, retry_exc)
+            except TelegramForbiddenError:
+                deactivated_ids.append(uid)
+            except TelegramAPIError as exc:
+                err_msg = str(exc).lower()
+                if "chat not found" in err_msg or "user is deactivated" in err_msg:
+                    deactivated_ids.append(uid)
+                else:
+                    logger.debug("Menu sync skipped for user %d: %s", uid, exc)
+
+            await asyncio.sleep(0.04)
+    except asyncio.CancelledError:
+        logger.info("Main menu keyboard sync (%s) cancelled after %d deliveries", sig_str, sent_count)
+        raise
+
+    if deactivated_ids:
+        try:
+            async with async_session_maker() as session:
+                await UserRepository(session).set_active_status_bulk(deactivated_ids, False)
+                await session.commit()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed deactivating unreachable users during menu sync: %s", exc)
+
+    if (
+        (sent_count > 0 or len(deactivated_ids) == len(user_ids))
+        and format_main_menu_signature(get_main_menu_signature()) == sig_str
+    ):
+        set_menu_last_broadcast_sig(sig_str)
+
+    logger.info(
+        "Main menu keyboard sync (%s) finished: delivered=%d, deactivated=%d, total=%d",
+        sig_str,
+        sent_count,
+        len(deactivated_ids),
+        len(user_ids),
+    )
+
+
 @app.post("/admin/api/settings")
 async def api_update_settings(
     payload: UpdateSettingsPayload,
     auth_admin: bool = Depends(require_admin),
 ) -> Any:
-    """Update dynamic marketplace settings."""
+    """Update dynamic marketplace settings and sync main menu keyboard for all active users when needed."""
     _ = auth_admin
+    old_menu_sig = get_main_menu_signature()
+    custom_btn_dict = (
+        payload.custom_ad_button.model_dump()
+        if payload.custom_ad_button is not None
+        else None
+    )
     updated = update_market_settings(
         max_active_ads=payload.max_active_ads,
         stars_turbo_price=payload.stars_turbo_price,
@@ -1497,9 +1627,44 @@ async def api_update_settings(
         autopost_channel_id=payload.autopost_channel_id,
         autopost_enabled=payload.autopost_enabled,
         referrals_for_top=payload.referrals_for_top,
+        custom_ad_button=custom_btn_dict,
     )
-    logger.info("Admin updated marketplace settings: %s", updated)
-    return {"ok": True, "settings": updated}
+    new_menu_sig = get_main_menu_signature()
+    new_menu_sig_str = format_main_menu_signature(new_menu_sig)
+
+    menu_sync_started = False
+    should_sync_menu = (old_menu_sig != new_menu_sig) or (
+        new_menu_sig[0] and get_menu_last_broadcast_sig() != new_menu_sig_str
+    )
+    if should_sync_menu:
+        bot = getattr(app.state, "bot", None)
+        if bot is not None:
+            prev_task: asyncio.Task[Any] | None = getattr(app.state, "menu_sync_task", None)
+            if prev_task is not None and not prev_task.done():
+                prev_task.cancel()
+            sync_task = asyncio.create_task(
+                _sync_menu_keyboard_worker(
+                    bot=bot,
+                    sig_str=new_menu_sig_str,
+                    enabled=new_menu_sig[0],
+                    button_text=new_menu_sig[1],
+                )
+            )
+            app.state.menu_sync_task = sync_task
+            _background_tasks.add(sync_task)
+            sync_task.add_done_callback(_background_tasks.discard)
+            menu_sync_started = True
+
+    logger.info(
+        "Admin updated marketplace settings: %s (menu_sync_started=%s)",
+        updated,
+        menu_sync_started,
+    )
+    return {
+        "ok": True,
+        "settings": updated,
+        "menu_sync_started": menu_sync_started,
+    }
 
 
 @app.get("/admin/api/referrals/stats")

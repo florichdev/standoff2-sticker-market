@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.data.game_catalog import (
     get_categories,
+    get_skins,
     get_weapons,
     is_valid_selection,
     is_valid_sticker_rarity,

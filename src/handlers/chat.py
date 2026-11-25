@@ -5,7 +5,11 @@ from typing import Any
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import (
+    TelegramAPIError,
+    TelegramBadRequest,
+    TelegramForbiddenError,
+)
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
@@ -22,9 +26,12 @@ from src.keyboards.chat import (
     CB_CHAT_PAUSE,
     CB_CHAT_REPORT,
     CB_CHAT_RESUME,
+    CB_DEAL_CONFIRM,
+    CB_DEAL_REJECT,
     CB_RATE_SELLER,
     get_chat_control_keyboard,
     get_chat_incoming_keyboard,
+    get_deal_confirmation_keyboard,
     get_my_chats_keyboard,
     get_rating_keyboard,
 )
@@ -739,6 +746,13 @@ async def handle_chat_close(
         "Чат закрыт одним из участников. Сообщения больше не пересылаются."
     )
 
+    deal_prompt = (
+        "🤝 <b>Состоялась ли сделка между вами?</b>\n\n"
+        "Подтвердите, пожалуйста, была ли совершена передача скина / оплата.\n"
+        "<i>Оценка продавца станет доступна только после подтверждения обеими сторонами.</i>"
+    )
+    deal_kb = get_deal_confirmation_keyboard(session_id=active_chat.id)
+
     if callback.bot:
         await callback.bot.send_message(
             chat_id=user.id,
@@ -754,21 +768,166 @@ async def handle_chat_close(
         except (TelegramForbiddenError, TelegramBadRequest):
             pass
 
-        try:
-            await callback.bot.send_message(
-                chat_id=active_chat.buyer_id,
-                text=(
-                    "⭐️ <b>Сделка состоялась? Оцените продавца:</b>\n\n"
-                    "Ваша оценка влияет на рейтинг продавца в каталоге Standoff 2."
-                ),
-                reply_markup=get_rating_keyboard(
-                    session_id=active_chat.id, seller_id=active_chat.seller_id
-                ),
-            )
-        except (TelegramForbiddenError, TelegramBadRequest):
-            pass
+        # Send deal confirmation question to both buyer and seller
+        for participant_id in (active_chat.buyer_id, active_chat.seller_id):
+            try:
+                await callback.bot.send_message(
+                    chat_id=participant_id,
+                    text=deal_prompt,
+                    reply_markup=deal_kb,
+                )
+            except (TelegramForbiddenError, TelegramBadRequest, TelegramAPIError) as exc:
+                logger.debug("Could not send deal confirmation to %d: %s", participant_id, exc)
 
     await callback.answer("Чат закрыт")
+
+
+@router.callback_query(F.data.startswith(CB_DEAL_CONFIRM))
+async def handle_deal_confirm(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+) -> None:
+    """Handle user confirming that deal took place."""
+    try:
+        session_id = int(callback.data[len(CB_DEAL_CONFIRM) :])  # type: ignore[index]
+    except (IndexError, ValueError):
+        await callback.answer("Ошибка параметров", show_alert=True)
+        return
+
+    chat_repo = ChatRepository(session)
+    success, chat_session, status = await chat_repo.confirm_deal_participant(
+        session_id=session_id, user_id=user.id, confirmed=True
+    )
+
+    if not success or chat_session is None:
+        if status == "already_answered":
+            await callback.answer("Вы уже дали ответ по этой сделке.", show_alert=True)
+            if isinstance(callback.message, Message):
+                try:
+                    await callback.message.edit_reply_markup(reply_markup=None)
+                except TelegramBadRequest:
+                    pass
+            return
+        await callback.answer("Сделка недоступна или завершена.", show_alert=True)
+        return
+
+    if status == "waiting_other":
+        await callback.answer("Подтверждение принято!")
+        if isinstance(callback.message, Message):
+            try:
+                await callback.message.edit_text(
+                    text=(
+                        "✅ <b>Вы подтвердили, что сделка состоялась.</b>\n\n"
+                        "⏳ <i>Ожидаем подтверждения от второго участника сделки...</i>"
+                    ),
+                    reply_markup=None,
+                )
+            except TelegramBadRequest:
+                pass
+        return
+
+    if status == "both_confirmed":
+        await callback.answer("Сделка подтверждена!")
+        if isinstance(callback.message, Message):
+            try:
+                await callback.message.edit_text(
+                    text="✅ <b>Сделка успешно подтверждена обеими сторонами!</b>",
+                    reply_markup=None,
+                )
+            except TelegramBadRequest:
+                pass
+
+        if callback.bot:
+            # Notify seller
+            try:
+                await callback.bot.send_message(
+                    chat_id=chat_session.seller_id,
+                    text=(
+                        "🎉 <b>Обе стороны подтвердили совершение сделки!</b>\n\n"
+                        "Покупателю отправлено предложение оценить ваше обслуживание."
+                    ),
+                )
+            except TelegramAPIError:
+                pass
+
+            # Prompt buyer for rating
+            try:
+                await callback.bot.send_message(
+                    chat_id=chat_session.buyer_id,
+                    text=(
+                        "🎉 <b>Обе стороны подтвердили совершение сделки!</b>\n\n"
+                        "⭐️ <b>Пожалуйста, оцените продавца:</b>\n"
+                        "Ваша оценка влияет на рейтинг продавца в каталоге Standoff 2."
+                    ),
+                    reply_markup=get_rating_keyboard(
+                        session_id=chat_session.id,
+                        seller_id=chat_session.seller_id,
+                    ),
+                )
+            except TelegramAPIError:
+                pass
+
+
+@router.callback_query(F.data.startswith(CB_DEAL_REJECT))
+async def handle_deal_reject(
+    callback: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+) -> None:
+    """Handle user stating that deal did NOT take place."""
+    try:
+        session_id = int(callback.data[len(CB_DEAL_REJECT) :])  # type: ignore[index]
+    except (IndexError, ValueError):
+        await callback.answer("Ошибка параметров", show_alert=True)
+        return
+
+    chat_repo = ChatRepository(session)
+    success, chat_session, status = await chat_repo.confirm_deal_participant(
+        session_id=session_id, user_id=user.id, confirmed=False
+    )
+
+    if not success or chat_session is None:
+        if status == "already_answered":
+            await callback.answer("Вы уже дали ответ по этой сделке.", show_alert=True)
+            if isinstance(callback.message, Message):
+                try:
+                    await callback.message.edit_reply_markup(reply_markup=None)
+                except TelegramBadRequest:
+                    pass
+            return
+        await callback.answer("Сделка недоступна или завершена.", show_alert=True)
+        return
+
+    await callback.answer("Ответ зафиксирован")
+    if isinstance(callback.message, Message):
+        try:
+            await callback.message.edit_text(
+                text=(
+                    "❌ <b>Вы отметили, что сделка не состоялась.</b>\n\n"
+                    "Возможность оставить отзыв отключена."
+                ),
+                reply_markup=None,
+            )
+        except TelegramBadRequest:
+            pass
+
+    other_id = (
+        chat_session.seller_id
+        if user.id == chat_session.buyer_id
+        else chat_session.buyer_id
+    )
+    if callback.bot:
+        try:
+            await callback.bot.send_message(
+                chat_id=other_id,
+                text=(
+                    "ℹ️ <b>Один из участников отметил, что сделка не состоялась.</b>\n"
+                    "Оценка продавца отменена."
+                ),
+            )
+        except TelegramAPIError:
+            pass
 
 
 

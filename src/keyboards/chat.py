@@ -8,6 +8,28 @@ CB_CHAT_REPORT: str = "chat_rep:"
 CB_RATE_SELLER: str = "rate_s:"
 CB_CHAT_RESUME: str = "chat_res:"
 CB_CHAT_PAUSE: str = "chat_pause:"
+CB_DEAL_CONFIRM: str = "deal_ok:"
+CB_DEAL_REJECT: str = "deal_no:"
+
+
+def get_deal_confirmation_keyboard(session_id: int) -> InlineKeyboardMarkup:
+    """Build deal confirmation buttons for buyer and seller."""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ Да, сделка состоялась",
+            callback_data=f"{CB_DEAL_CONFIRM}{session_id}",
+            style="success",
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="❌ Нет, сделка не состоялась",
+            callback_data=f"{CB_DEAL_REJECT}{session_id}",
+            style="danger",
+        )
+    )
+    return builder.as_markup()
 
 
 def get_chat_control_keyboard(session_id: int) -> InlineKeyboardMarkup:

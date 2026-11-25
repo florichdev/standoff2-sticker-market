@@ -1332,10 +1332,50 @@ button, input, select, textarea {
    Mobile Optimization & Layout Safety (<640px)
    ========================================================================== */
 @media (max-width: 640px) {
+  .topbar {
+    padding: 0 12px !important;
+  }
   .page-header {
     flex-direction: column !important;
     align-items: stretch !important;
     gap: 12px !important;
+  }
+  .page-title {
+    font-size: 17px !important;
+  }
+  .page-subtitle {
+    font-size: 11.5px !important;
+  }
+  .search-box {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  .panel {
+    padding: 14px 12px !important;
+    border-radius: var(--radius-sm) !important;
+  }
+  .panel-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .panel-header .btn {
+    width: 100% !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+  .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--radius-xs);
+  }
+  .table-responsive::-webkit-scrollbar {
+    height: 5px;
+  }
+  .table-responsive::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: 4px;
   }
   .ads-header-controls {
     width: 100% !important;
@@ -1366,6 +1406,43 @@ button, input, select, textarea {
     width: 100% !important;
     justify-content: center !important;
     text-align: center !important;
+  }
+  .chat-bubble {
+    max-width: 92% !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+}
+
+/* ==========================================================================
+   Small Mobile Optimization (<=420px) — iPhone SE, Galaxy S compact
+   ========================================================================== */
+@media (max-width: 420px) {
+  .topbar-title {
+    font-size: 13px !important;
+  }
+  .kpi-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .kpi-card {
+    padding: 10px 12px !important;
+  }
+  .kpi-value {
+    font-size: 19px !important;
+  }
+  .card {
+    padding: 14px 12px !important;
+  }
+  .login-card {
+    padding: 20px 14px !important;
+  }
+  .btn {
+    font-size: 12px !important;
+    padding: 6px 10px !important;
+  }
+  .catalog-tab-bar {
+    gap: 4px !important;
   }
 }
 

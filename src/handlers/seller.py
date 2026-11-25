@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+import html
 import logging
 from typing import Any
 
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.data.game_catalog import (
     get_categories,
+    get_skins,
     get_weapons,
     is_valid_selection,
 )

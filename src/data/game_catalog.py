@@ -806,10 +806,20 @@ def save_catalog() -> bool:
     global _catalog_mtime
     try:
         CATALOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        import os, tempfile; tf = tempfile.NamedTemporaryFile("w", dir=str(CATALOG_FILE.parent), delete=False, encoding="utf-8")
-        with tf as f:
+        import os, tempfile, time
+        tf_name = None
+        with tempfile.NamedTemporaryFile("w", dir=str(CATALOG_FILE.parent), delete=False, encoding="utf-8") as f:
+            tf_name = f.name
             json.dump(GAME_CATALOG, f, ensure_ascii=False, indent=2)
-        os.replace(tf.name, CATALOG_FILE); _catalog_mtime = CATALOG_FILE.stat().st_mtime
+        for attempt in range(5):
+            try:
+                os.replace(tf_name, CATALOG_FILE)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.05)
+        _catalog_mtime = CATALOG_FILE.stat().st_mtime
         return True
     except Exception as exc:
         logger.error("Failed to save catalog.json: %s", exc)

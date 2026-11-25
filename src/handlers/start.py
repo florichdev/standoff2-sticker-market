@@ -4,10 +4,10 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.data.settings_manager import get_referrals_for_top
+from src.data.settings_manager import get_custom_ad_button, get_referrals_for_top
 from src.database.models import User
 from src.database.repositories.ad_repo import AdRepository
 from src.database.repositories.referral_repo import ReferralRepository
@@ -45,45 +45,58 @@ async def handle_start(
     await state.clear()
 
     # Handle referral invite payload (e.g. /start ref_123456)
-    if command and command.args and command.args.startswith("ref_"):
-        raw_ref_id = command.args[4:]
+    ref_arg: str | None = None
+    if command and command.args:
+        ref_arg = command.args.strip()
+    elif message.text:
+        parts = message.text.split(maxsplit=1)
+        if len(parts) > 1 and parts[1].startswith("ref_"):
+            ref_arg = parts[1].strip()
+
+    if ref_arg and ref_arg.startswith("ref_"):
+        raw_ref_id = ref_arg[4:]
         if raw_ref_id.isdigit():
             referrer_id = int(raw_ref_id)
-            if is_new_user and referrer_id != user.id:
+            if referrer_id != user.id:
                 ref_repo = ReferralRepository(session)
-                recorded = await ref_repo.register_referral_atomic(
-                    referrer_id=referrer_id, new_user_id=user.id
-                )
-                if recorded and message.bot:
-                    threshold = get_referrals_for_top()
-                    current_count = await ref_repo.get_referrals_count(referrer_id)
-                    if current_count % threshold == 0:
-                        new_boosts = await ref_repo.grant_free_boost(referrer_id, count=1)
-                        notice_text = (
-                            f"🎉 <b>Вы пригласили {threshold} друзей! Вам доступен 1 бесплатный ТОП (Цель достигнута)!</b>\n\n"
-                            f"По вашей ссылке зарегистрировался новый пользователь. "
-                            f"Всего вами приглашено: <b>{current_count}</b> друзей.\n\n"
-                            f"🎁 <b>Вам начислен 1 бесплатный ТОП на 24 часа в копилку наград!</b>\n"
-                            f"Доступно бесплатных ТОПов: <b>{new_boosts}</b> шт.\n\n"
-                            "Вы сами выбираете, когда и к какому лоту его применить:\n"
-                            "• при публикации нового объявления\n"
-                            "• в разделе 📦 <b>Мои объявления</b> на уже существующий скин."
-                        )
-                    else:
-                        remaining = threshold - (current_count % threshold)
-                        notice_text = (
-                            "👋 <b>По вашей ссылке присоединился новый друг!</b>\n\n"
-                            f"Приглашено друзей для следующего ТОПа: <b>{current_count % threshold} / {threshold}</b>\n"
-                            f"Осталось пригласить еще: <b>{remaining}</b>."
-                        )
+                existing_ref = await ref_repo.get_referral_source(user.id)
+                if existing_ref is None:
+                    recorded = await ref_repo.register_referral_atomic(
+                        referrer_id=referrer_id, new_user_id=user.id
+                    )
+                    if recorded:
+                        await session.commit()
+                        if message.bot:
+                            threshold = get_referrals_for_top()
+                            current_count = await ref_repo.get_referrals_count(referrer_id)
+                            if current_count % threshold == 0:
+                                new_boosts = await ref_repo.grant_free_boost(referrer_id, count=1)
+                                await session.commit()
+                                notice_text = (
+                                    f"🎉 <b>Вы пригласили {threshold} друзей! Вам доступен 1 бесплатный ТОП (Цель достигнута)!</b>\n\n"
+                                    f"По вашей ссылке зарегистрировался новый пользователь. "
+                                    f"Всего вами приглашено: <b>{current_count}</b> друзей.\n\n"
+                                    f"🎁 <b>Вам начислен 1 бесплатный ТОП на 24 часа в копилку наград!</b>\n"
+                                    f"Доступно бесплатных ТОПов: <b>{new_boosts}</b> шт.\n\n"
+                                    "Вы сами выбираете, когда и к какому лоту его применить:\n"
+                                    "• при публикации нового объявления\n"
+                                    "• в разделе 📦 <b>Мои объявления</b> на уже существующий скин."
+                                )
+                            else:
+                                remaining = threshold - (current_count % threshold)
+                                notice_text = (
+                                    "👋 <b>По вашей ссылке присоединился новый друг!</b>\n\n"
+                                    f"Приглашено друзей для следующего ТОПа: <b>{current_count % threshold} / {threshold}</b>\n"
+                                    f"Осталось пригласить еще: <b>{remaining}</b>."
+                                )
 
-                    try:
-                        await message.bot.send_message(
-                            chat_id=referrer_id,
-                            text=notice_text,
-                        )
-                    except TelegramAPIError as exc:
-                        logger.debug("Could not send referral notice to %d: %s", referrer_id, exc)
+                            try:
+                                await message.bot.send_message(
+                                    chat_id=referrer_id,
+                                    text=notice_text,
+                                )
+                            except TelegramAPIError as exc:
+                                logger.debug("Could not send referral notice to %d: %s", referrer_id, exc)
 
     # Handle deep-link payload (e.g. /start ad_42 from Telegram channel autopost)
     if command and command.args and command.args.startswith("ad_"):
@@ -124,6 +137,49 @@ async def handle_start(
         text=WELCOME_TEXT,
         reply_markup=get_main_menu_keyboard(),
     )
+
+
+def is_custom_ad_button_message(message: Message) -> bool:
+    """Check if message text matches active custom sponsor/ad button."""
+    if not message.text:
+        return False
+    btn_cfg = get_custom_ad_button()
+    if not btn_cfg.get("enabled"):
+        return False
+    btn_text = btn_cfg.get("text", "").strip()
+    return bool(btn_text and message.text.strip() == btn_text)
+
+
+@router.message(is_custom_ad_button_message)
+async def handle_custom_ad_button(message: Message, state: FSMContext) -> None:
+    """Send promotional card with direct inline link when user clicks sponsor button."""
+    await state.clear()
+    btn_cfg = get_custom_ad_button()
+    url = (btn_cfg.get("url") or "https://example.com/").strip()
+    link_btn_text = (btn_cfg.get("link_button_text") or "🌐 Перейти на сайт").strip()
+    message_text = (
+        btn_cfg.get("message_text")
+        or "🔗 <b>Партнёрское предложение</b>\n\nДля перехода на сайт партнёра нажмите кнопку ниже 👇"
+    )
+
+    inline_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=link_btn_text, url=url)]
+        ]
+    )
+
+    try:
+        await message.answer(
+            text=message_text,
+            reply_markup=inline_kb,
+            parse_mode="HTML",
+        )
+    except TelegramAPIError:
+        await message.answer(
+            text=message_text,
+            reply_markup=inline_kb,
+            parse_mode=None,
+        )
 
 
 @router.message(F.text == BTN_HIDE_MENU)

@@ -205,12 +205,76 @@ class ChatRepository:
         result = await self.session.execute(statement)
         return result.scalar_one_or_none() is not None
 
+    async def confirm_deal_participant(
+        self, session_id: int, user_id: int, confirmed: bool
+    ) -> tuple[bool, ChatSession | None, str]:
+        """Record deal confirmation/rejection from buyer or seller under row lock.
+
+        Returns: (success, chat_session, status)
+        where status is one of:
+        - "already_answered": user already answered
+        - "both_confirmed": both parties confirmed deal -> ready for rating
+        - "waiting_other": this party confirmed, waiting for other party
+        - "rejected": deal marked as not completed
+        - "invalid": user not part of chat
+        """
+        lock_stmt = (
+            select(ChatSession)
+            .where(ChatSession.id == session_id)
+            .with_for_update()
+        )
+        res = await self.session.execute(lock_stmt)
+        chat_session = res.scalar_one_or_none()
+        if (
+            chat_session is None
+            or user_id not in (chat_session.buyer_id, chat_session.seller_id)
+        ):
+            return False, None, "invalid"
+
+        is_buyer = user_id == chat_session.buyer_id
+        current_answer = (
+            chat_session.buyer_confirmed_deal
+            if is_buyer
+            else chat_session.seller_confirmed_deal
+        )
+        if current_answer is not None:
+            return False, chat_session, "already_answered"
+
+        if not confirmed:
+            if is_buyer:
+                chat_session.buyer_confirmed_deal = False
+            else:
+                chat_session.seller_confirmed_deal = False
+            chat_session.deal_completed = False
+            await self.session.flush()
+            return True, chat_session, "rejected"
+
+        if is_buyer:
+            chat_session.buyer_confirmed_deal = True
+        else:
+            chat_session.seller_confirmed_deal = True
+
+        other_confirmed = (
+            chat_session.seller_confirmed_deal
+            if is_buyer
+            else chat_session.buyer_confirmed_deal
+        )
+
+        if other_confirmed is True:
+            chat_session.deal_completed = True
+            await self.session.flush()
+            return True, chat_session, "both_confirmed"
+
+        await self.session.flush()
+        return True, chat_session, "waiting_other"
+
     async def record_seller_review(
         self, session_id: int, seller_id: int, buyer_id: int, score: int
     ) -> tuple[bool, float]:
         """Record seller rating (1-5 ⭐) and atomically recalculate seller reputation under row lock.
 
-        Ensures a buyer can only review the same seller at most once across the bot.
+        Ensures a buyer can only review the same seller at most once across the bot,
+        and only when both parties mutually confirmed that the deal took place.
         Returns (is_success, updated_rating).
         """
         if score < 1 or score > 5:
@@ -221,6 +285,7 @@ class ChatRepository:
             chat_session is None
             or chat_session.buyer_id != buyer_id
             or chat_session.seller_id != seller_id
+            or not chat_session.deal_completed
         ):
             return False, 5.0
 

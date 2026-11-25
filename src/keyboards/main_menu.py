@@ -15,6 +15,13 @@ BTN_BACK_MENU: str = "🏠 Главное меню"
 
 def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
     """Return collapsible reply keyboard for the main menu with valid Telegram styles."""
+    from src.data.settings_manager import get_custom_ad_button
+
+    custom_btn = get_custom_ad_button()
+    custom_rows: list[list[KeyboardButton]] = []
+    if custom_btn.get("enabled") and custom_btn.get("text"):
+        custom_rows.append([KeyboardButton(text=custom_btn["text"].strip())])
+
     keyboard = [
         [
             KeyboardButton(text=BTN_BUY_SKIN, style="primary"),
@@ -28,6 +35,7 @@ def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
             KeyboardButton(text=BTN_PROFILE),
             KeyboardButton(text=BTN_SETTINGS),
         ],
+        *custom_rows,
         [
             KeyboardButton(text=BTN_HIDE_MENU),
         ],
